@@ -2,13 +2,15 @@
 
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
-type Variant = "banana" | "alerta" | "circuito" | "cream" | "panel";
+type Variant = "banana" | "alerta" | "circuito" | "cabo" | "fio" | "cream" | "panel";
 type Size = "sm" | "md" | "lg";
 
 const VARIANTS: Record<Variant, string> = {
   banana: "bg-banana text-ink-play",
   alerta: "bg-alerta text-ink-play",
   circuito: "bg-circuito text-ink-play",
+  cabo: "bg-cabo text-ink-play",
+  fio: "bg-fio text-ink-play",
   cream: "bg-cream text-outline",
   panel: "bg-panel-hi text-cream",
 };

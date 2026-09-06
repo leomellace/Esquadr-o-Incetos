@@ -1,38 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useCurrentProfile } from "@/components/NameGate";
 import { getBrowserClient } from "@/lib/supabase/client";
 import { useGameChannel } from "@/lib/net/gameChannel";
+import { generateBomb, applyBombAction, checkTimeExpired } from "@/lib/game/bomb";
+import type { BombAction, BombConfig, BombState } from "@/lib/game/bomb";
+import { logMatchEvent, finalizeMatch } from "@/lib/game/matchEvents";
+import { syncServerClock, serverNow } from "@/lib/game/serverClock";
 import { Panel } from "@/components/ui/Panel";
 import { ToyButton } from "@/components/ui/ToyButton";
+import { LcdTimer } from "@/components/ui/LcdTimer";
 import type { Database } from "@/types/database";
 
 type RoomRow = Database["incetos"]["Tables"]["rooms"]["Row"];
 
-/**
- * Estado mínimo pra provar o motor da F3 funcionando de ponta a ponta,
- * sem nenhuma lógica de bomba (isso é F4). Três coisas propositalmente
- * demonstradas aqui:
- *
- * - `startedAtMs` vem do banco (matches.started_at), não é acumulado
- *   em memória — então o cronômetro nunca "pula" numa migração de
- *   host, porque qualquer host recalcula o mesmo valor a partir da
- *   mesma âncora, em vez de continuar de onde o host anterior parou.
- * - `hostTickCount` só o host incrementa, a cada tick — prova que o
- *   loop está rodando e sendo transmitido (state:delta).
- * - `clickCount` só muda via `sendAction` — prova o caminho
- *   input:action de cliente pra host (F4 vai plugar o `reduce()` de
- *   cada módulo exatamente aqui).
- */
-interface DemoState {
-  startedAtMs: number;
-  hostTickCount: number;
-  clickCount: number;
-}
-
-type DemoAction = { type: "click" };
+// Sem UI de configuração ainda (isso é F10 — modo personalizado e
+// campanha de verdade). Todo mundo joga a mesma bomba fixa por ora,
+// só pra validar o motor: geração por seed, timer, strikes, fim de
+// jogo. F9 troca isso por `campaign_levels`/config da sala.
+const DEFAULT_CONFIG: Omit<BombConfig, "seed"> = {
+  moduleIds: ["simon"],
+  difficulty: 3,
+  timeLimitMs: 120_000,
+  maxStrikes: 3,
+};
 
 export default function PartidaPage() {
   const params = useParams<{ code: string }>();
@@ -41,6 +34,7 @@ export default function PartidaPage() {
   const router = useRouter();
 
   const [room, setRoom] = useState<RoomRow | null>(null);
+  const [matchId, setMatchId] = useState<string | null>(null);
   const [startedAtMs, setStartedAtMs] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -49,6 +43,12 @@ export default function PartidaPage() {
     let cancelled = false;
 
     async function load() {
+      // Em paralelo: medir o offset de relógio não depende de nada
+      // abaixo, e não vale a pena atrasar o carregamento da sala por
+      // isso — o pior caso é o timer corrigir sozinho um instante
+      // depois de aparecer na tela.
+      void syncServerClock();
+
       const { data: roomRow, error: roomError } = await supabase
         .from("rooms")
         .select("*")
@@ -68,14 +68,19 @@ export default function PartidaPage() {
 
       const { data: match } = await supabase
         .from("matches")
-        .select("started_at")
+        .select("id, started_at")
         .eq("room_id", roomRow.id)
         .order("started_at", { ascending: false })
         .limit(1)
         .maybeSingle();
 
       if (cancelled) return;
-      setStartedAtMs(match ? new Date(match.started_at).getTime() : Date.now());
+      if (!match) {
+        setLoadError("Nenhuma partida encontrada para esta sala.");
+        return;
+      }
+      setMatchId(match.id);
+      setStartedAtMs(new Date(match.started_at).getTime());
     }
 
     load();
@@ -94,7 +99,7 @@ export default function PartidaPage() {
     );
   }
 
-  if (!room || startedAtMs === null) {
+  if (!room || !matchId || startedAtMs === null) {
     return (
       <div className="grid flex-1 place-items-center p-8">
         <p className="animate-pulse font-mono text-sm text-cream-dim">carregando partida...</p>
@@ -102,50 +107,80 @@ export default function PartidaPage() {
     );
   }
 
-  return <PartidaGame room={room} startedAtMs={startedAtMs} selfProfileId={profile.id} />;
+  return (
+    <PartidaGame
+      room={room}
+      matchId={matchId}
+      startedAtMs={startedAtMs}
+      selfProfileId={profile.id}
+    />
+  );
 }
 
+const SIMON_LABELS = ["●", "▲", "■", "◆"] as const;
+
 /**
- * Só monta (e só chama useGameChannel) depois que `startedAtMs` já
- * veio do banco. `useState(initialState)` presta atenção apenas na
- * primeira renderização — se o motor montasse antes do fetch
- * terminar, cada jogador ancorava o cronômetro num `Date.now()`
- * diferente (o do instante em que a própria aba carregou), e nem o
- * host corrigiria isso depois, porque o valor errado já teria virado
- * o estado local dele também.
+ * Só monta depois que sala + partida + seed já são conhecidos — mesmo
+ * motivo da F3: `useState(initialState)` só lê o valor inicial uma
+ * vez, então gerar a bomba (que depende do seed real) precisa
+ * acontecer ANTES do primeiro render deste componente, não dentro dele.
  */
 function PartidaGame({
   room,
+  matchId,
   startedAtMs,
   selfProfileId,
 }: {
   room: RoomRow;
+  matchId: string;
   startedAtMs: number;
   selfProfileId: string;
 }) {
-  // Começa em 0 (puro) em vez de Date.now(): o relógio de parede real
-  // só entra dentro do efeito, onde chamar uma função impura é permitido.
   const [now, setNow] = useState(0);
+  const seqRef = useRef(0);
+  const finalizedRef = useRef(false);
 
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 100);
+    const id = setInterval(() => setNow(serverNow()), 100);
     return () => clearInterval(id);
   }, []);
 
-  const engine = useGameChannel<DemoState, DemoAction>({
+  // Memoizado: sem isso, `now` mudando 10x/s (o relógio de exibição)
+  // re-renderiza PartidaGame e recomputaria a bomba inteira a cada
+  // render — desperdício puro, já que o resultado é sempre idêntico
+  // para o mesmo seed. useGameChannel só olha para este valor na
+  // primeira montagem de qualquer forma (mesmo raciocínio da F3).
+  const initialBomb = useMemo(
+    () => generateBomb({ ...DEFAULT_CONFIG, seed: room.seed }, startedAtMs),
+    [room.seed, startedAtMs],
+  );
+
+  const engine = useGameChannel<BombState, BombAction>({
     roomId: room.id,
     selfProfileId,
-    initialState: { startedAtMs, hostTickCount: 0, clickCount: 0 },
-    tick: (state) => ({ ...state, hostTickCount: state.hostTickCount + 1 }),
-    onAction: (state, action) => {
-      if (action.type === "click") return { ...state, clickCount: state.clickCount + 1 };
-      return state;
+    initialState: initialBomb,
+    tick: (state) => checkTimeExpired(state, serverNow()),
+    onAction: (state, action, fromProfileId) => {
+      const next = applyBombAction(state, action, serverNow());
+      if (next !== state) {
+        seqRef.current += 1;
+        void logMatchEvent(matchId, fromProfileId, seqRef.current, action);
+      }
+      return next;
     },
   });
 
-  const elapsedS = Math.max(0, Math.floor((now - engine.state.startedAtMs) / 1000));
-  const mm = String(Math.floor(elapsedS / 60)).padStart(2, "0");
-  const ss = String(elapsedS % 60).padStart(2, "0");
+  const { state: bomb, isHost } = engine;
+
+  useEffect(() => {
+    if (bomb.status === "armed" || !isHost || finalizedRef.current) return;
+    finalizedRef.current = true;
+    void finalizeMatch(matchId, room.id, bomb, serverNow());
+  }, [bomb, isHost, matchId, room.id]);
+
+  const timeLeft = Math.max(0, bomb.config.timeLimitMs - (now - bomb.startedAtMs));
+  const simon = bomb.modules[0];
+  const simonState = simon.state as { sequenceLength: number; progress: number };
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-10">
@@ -154,56 +189,56 @@ function PartidaGame({
           Partida · {room.code}
         </p>
         <h1 className="font-display text-3xl font-bold text-cream">
-          Motor de rede (F3) — sem bomba ainda
+          Bomba de teste (F4) — visão única, sem separar papéis ainda
         </h1>
+        <p className="mt-1 text-sm text-cream-dim">
+          A F6 vai esconder isso conforme o papel de cada um. Por ora todo mundo vê tudo, só pra
+          validar o motor.
+        </p>
       </header>
 
-      <Panel title="Estado da conexão">
-        <dl className="grid grid-cols-2 gap-y-2 text-sm">
-          <dt className="text-cream-dim">Canal</dt>
-          <dd className="font-mono">{engine.connected ? "conectado" : "conectando..."}</dd>
+      {bomb.status !== "armed" && (
+        <Panel
+          title={bomb.status === "defused" ? "Bomba desarmada!" : "Bum."}
+          className="text-center"
+        >
+          <p className="font-display text-3xl">{bomb.status === "defused" ? "🎉" : "💥"}</p>
+          <p className="mt-2 text-sm text-cream-dim">
+            {bomb.strikes} strike(s) · {Math.ceil(timeLeft / 1000)}s restantes quando terminou
+          </p>
+        </Panel>
+      )}
 
+      <Panel title="Visor">
+        <LcdTimer ms={timeLeft} strikes={bomb.strikes} maxStrikes={bomb.config.maxStrikes} />
+      </Panel>
+
+      <Panel title={`Módulo Simon (${simonState.progress}/${simonState.sequenceLength})`}>
+        <div className="flex flex-wrap gap-3">
+          {SIMON_LABELS.map((label, index) => (
+            <ToyButton
+              key={index}
+              size="lg"
+              variant={(["banana", "alerta", "circuito", "cabo"] as const)[index]}
+              disabled={bomb.status !== "armed" || simon.solved}
+              onClick={() =>
+                engine.sendAction({ moduleId: "simon", payload: { buttonIndex: index } })
+              }
+            >
+              {label}
+            </ToyButton>
+          ))}
+        </div>
+        <p className="mt-4 text-sm text-cream-dim">{simon.manual[0].body}</p>
+      </Panel>
+
+      <Panel title="Motor de rede" className="text-sm">
+        <dl className="grid grid-cols-2 gap-y-1">
           <dt className="text-cream-dim">Você é o host?</dt>
           <dd className="font-mono">{engine.isHost ? "sim" : "não"}</dd>
-
-          <dt className="text-cream-dim">Host atual</dt>
-          <dd className="font-mono text-xs">{engine.hostId ?? "elegendo..."}</dd>
-
-          <dt className="text-cream-dim">Peers no canal</dt>
+          <dt className="text-cream-dim">Peers</dt>
           <dd className="font-mono">{engine.peers.length}</dd>
         </dl>
-      </Panel>
-
-      <Panel title="Cronômetro (âncora no banco, não no host)">
-        <p className="font-mono text-5xl font-bold text-lcd">
-          {mm}:{ss}
-        </p>
-        <p className="mt-2 text-sm text-cream-dim">
-          Recalculado por qualquer host a partir de{" "}
-          <code className="rounded bg-panel-hi px-1">matches.started_at</code> — se o host migrar,
-          esse número não pula.
-        </p>
-      </Panel>
-
-      <Panel title="Tick do host (state:delta)">
-        <p className="font-mono text-3xl">{engine.state.hostTickCount}</p>
-        <p className="mt-2 text-sm text-cream-dim">
-          Só o host incrementa isso, 20x/s, e transmite 10x/s. Se o host cair, o próximo eleito
-          continua a contagem de onde parou.
-        </p>
-      </Panel>
-
-      <Panel title="Ação cliente → host (input:action)">
-        <div className="flex items-center gap-4">
-          <ToyButton variant="banana" onClick={() => engine.sendAction({ type: "click" })}>
-            Jogar banana 🍌
-          </ToyButton>
-          <p className="font-mono text-2xl">{engine.state.clickCount}</p>
-        </div>
-        <p className="mt-2 text-sm text-cream-dim">
-          Qualquer jogador pode clicar; só o host aplica a mudança e redistribui o resultado — é
-          esse caminho que a F4 vai usar pra cortar cabo, apertar botão, etc.
-        </p>
       </Panel>
     </main>
   );

@@ -114,6 +114,11 @@ export interface Database {
       progress: Table<ProgressRow, Partial<ProgressRow> & { profile_id: string; level_id: number }>;
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      server_time_ms: {
+        Args: Record<string, never>;
+        Returns: number;
+      };
+    };
   };
 }

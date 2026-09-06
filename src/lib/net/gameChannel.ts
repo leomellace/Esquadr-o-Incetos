@@ -70,11 +70,19 @@ export function useGameChannel<TState, TAction = never>({
 
   // Refs só podem ser escritas fora do render (React proíbe mutação
   // durante o render, inclusive pensando no React Compiler). Este
-  // efeito roda depois de todo render e mantém as refs — lidas de
-  // dentro de closures de longa duração no efeito de rede abaixo —
-  // sempre com o valor mais recente de props/state.
+  // efeito roda depois de todo render e mantém `tickRef`/`onActionRef`
+  // — lidas de dentro de closures de longa duração no efeito de rede
+  // abaixo — sempre com a versão mais recente das props.
+  //
+  // `stateRef` DE PROPÓSITO não é sincronizado aqui. Ele é escrito só
+  // nos pontos autoritativos (tick, ação local, ação remota, broadcast
+  // recebido) — bug real encontrado em teste: como este efeito roda a
+  // cada render (inclusive os disparados por um timer de UI alheio ao
+  // jogo, 10x/s), um render atrasado podia commitar DEPOIS de um clique
+  // já ter avançado `stateRef.current`, e reescrevia por cima com o
+  // `state` mais velho que aquele render específico tinha capturado —
+  // um clique certo "desaparecia" silenciosamente.
   useEffect(() => {
-    stateRef.current = state;
     tickRef.current = tick;
     onActionRef.current = onAction;
   });
