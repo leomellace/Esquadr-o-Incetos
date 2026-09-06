@@ -95,30 +95,45 @@ export function useRoomRealtime({ roomCode, selfProfileId, selfDisplayName }: Ar
               is_ready: boolean;
             };
 
-            // A mudança já chegou; buscamos o nome só se ainda não o
-            // conhecemos (evita 1 round-trip por evento de ready-toggle).
+            // Aplica role/is_ready JÁ, de forma síncrona, usando o nome
+            // que já conhecemos (ou um placeholder). Não espera nenhum
+            // fetch antes de refletir o campo que realmente mudou.
+            //
+            // Isso importa porque dois eventos consecutivos pro MESMO
+            // jogador (entrar, depois escolher papel+pronto) disparam
+            // dois handlers assíncronos em paralelo; se o primeiro
+            // precisar buscar o perfil (mais lento) e o segundo não,
+            // o segundo terminava primeiro e o primeiro — com dados
+            // JÁ ULTRAPASSADOS — sobrescrevia por cima ao terminar
+            // depois. O nome pode chegar atrasado sem problema; o
+            // estado do jogo (role/pronto) não pode voltar no tempo.
             const known = store.getState().members[row.profile_id];
-            let displayName = known?.displayName;
-            let avatarKey = known?.avatarKey;
 
-            if (!displayName) {
+            store.getState().upsertMember({
+              profileId: row.profile_id,
+              displayName: known?.displayName ?? "...",
+              avatarKey: known?.avatarKey ?? "macaco-01",
+              role: row.role,
+              isReady: row.is_ready,
+              isHost: row.profile_id === room.host_id,
+            });
+
+            if (!known?.displayName) {
               const { data: p } = await supabase
                 .from("profiles")
                 .select("display_name, avatar_key")
                 .eq("id", row.profile_id)
                 .maybeSingle();
-              displayName = p?.display_name ?? "???";
-              avatarKey = p?.avatar_key ?? "macaco-01";
-            }
 
-            store.getState().upsertMember({
-              profileId: row.profile_id,
-              displayName,
-              avatarKey,
-              role: row.role,
-              isReady: row.is_ready,
-              isHost: row.profile_id === room.host_id,
-            });
+              // Só atualiza o nome — não repassa role/is_ready aqui,
+              // pra não arriscar reaplicar um valor que já ficou velho
+              // enquanto esse fetch estava em voo.
+              store.getState().upsertMember({
+                profileId: row.profile_id,
+                displayName: p?.display_name ?? "???",
+                avatarKey: p?.avatar_key ?? "macaco-01",
+              });
+            }
           },
         )
         .on(

@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useCurrentProfile } from "@/components/NameGate";
 import { useRoomRealtime } from "@/hooks/useRoomRealtime";
 import { useRoomStore } from "@/store/roomStore";
 import { selectRole, setReady, leaveRoom, RoomActionError } from "@/lib/game/roomActions";
+import { startMatch } from "@/lib/game/matchActions";
 import { Panel } from "@/components/ui/Panel";
 import { ToyButton } from "@/components/ui/ToyButton";
 import { RoleCard } from "@/components/ui/RoleCard";
@@ -30,6 +31,13 @@ export default function SalaPage() {
   const memberList = Object.values(members);
   const self = members[profile.id];
   const [error, setError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+
+  useEffect(() => {
+    if (room?.status === "in_progress") {
+      router.replace(`/partida/${room.code}`);
+    }
+  }, [room?.status, room?.code, router]);
 
   if (!room) {
     return (
@@ -64,6 +72,20 @@ export default function SalaPage() {
   async function handleLeave() {
     await leaveRoom(room!.id, profile.id);
     router.push("/");
+  }
+
+  async function handleStart() {
+    setError(null);
+    setStarting(true);
+    try {
+      await startMatch(room!);
+      // Não navega aqui: a atualização de `rooms.status` chega pelo
+      // Realtime que já está assinado (F2), e o useEffect acima manda
+      // o host junto com os outros dois, todos pelo mesmo caminho.
+    } catch (err) {
+      setError(err instanceof RoomActionError ? err.message : "Erro ao iniciar a partida.");
+      setStarting(false);
+    }
   }
 
   const allRolesFilled = ROLES.every((r) => roleOwner(r));
@@ -151,8 +173,13 @@ export default function SalaPage() {
         </ToyButton>
 
         {isHost && (
-          <ToyButton size="lg" variant="circuito" disabled={!canStart}>
-            {canStart ? "Iniciar (em breve)" : "Aguardando o trio"}
+          <ToyButton
+            size="lg"
+            variant="circuito"
+            disabled={!canStart || starting}
+            onClick={handleStart}
+          >
+            {starting ? "Iniciando..." : canStart ? "Iniciar" : "Aguardando o trio"}
           </ToyButton>
         )}
       </div>
