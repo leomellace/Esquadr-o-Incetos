@@ -14,6 +14,8 @@ import { setRemoteHand } from "@/components/scene/handTracking";
 import { Panel } from "@/components/ui/Panel";
 import { ManualBook } from "@/components/ManualBook";
 import { GestureWheel } from "@/components/GestureWheel";
+import { VoiceBar } from "@/components/VoiceBar";
+import { useVoice } from "@/lib/net/useVoice";
 import { GESTURE_TTL_MS } from "@/lib/game/gestures";
 import type { Database, Role } from "@/types/database";
 
@@ -273,6 +275,11 @@ function PartidaGame({
     return out;
   }, [gestures, now]);
 
+  // A voz é uma malha à parte do canal de jogo: mídia não passa pelo
+  // host, e o que ela negocia (quem manda áudio para quem) é decidido
+  // pelo papel, não pelo estado da partida.
+  const voice = useVoice({ roomId: room.id, selfProfileId, role });
+
   function emitGesture(id: string) {
     if (role === "espectador") return;
     // Aparece na própria tela também: sem isso o jogador não sabe se o
@@ -353,11 +360,14 @@ function PartidaGame({
         )}
 
         <footer className="flex items-end justify-between gap-4">
-          <p className="font-mono text-[10px] text-cream-dim/70">
-            {blind
-              ? "sem cor, sem número, sem manual — pergunte"
-              : "você não pode tocar na bomba"}
-          </p>
+          <div className="flex flex-col gap-2">
+            <VoiceBar voice={voice} />
+            <p className="font-mono text-[10px] text-cream-dim/70">
+              {blind
+                ? "sem cor, sem número, sem manual — pergunte"
+                : "você não pode tocar na bomba"}
+            </p>
+          </div>
           <GestureWheel
             onGesture={emitGesture}
             active={role === "espectador" ? null : (liveGestures[role] ?? null)}

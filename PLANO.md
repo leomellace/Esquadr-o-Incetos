@@ -110,7 +110,7 @@ interface ModuleDef<S, Sol> {
 | F4 ✅ | Motor de bomba | Sonnet 5 | PRNG determinístico, geração por seed, timer, strikes, vitória/derrota, validação na Edge Function |
 | F5 ✅ | Cena 3D | **Opus 5** | Van + bomba em R3F, look plástico de brinquedo (outline, bloom, sombra macia), câmera por papel, orçamento de perf mobile |
 | F6 ✅ | As 3 visões | **Opus 5** | Visão do Surdo, wireframe do Cego, manual folheável do Mudo |
-| F7 | Voz WebRTC | Sonnet 5 | Mesh de 3 peers, sinalização via Broadcast, roteamento por papel, push-to-talk, TURN de fallback |
+| F7 ✅ | Voz WebRTC | Sonnet 5 | Mesh de 3 peers, sinalização via Broadcast, roteamento por papel, push-to-talk, TURN de fallback |
 | F8 ✅ | Comunicação não-verbal | **Opus 5** | Roda de gestos, apontar compartilhado (raycast), emotes, estapear |
 | F9 | Módulos 1–6 | Sonnet (lógica) + **Opus** (visual) | Seis módulos completos nas três visões |
 | F10 | Modos de jogo | Sonnet 5 | Campanha (30 fases + curva), Infinito procedural, Personalizado |
@@ -119,7 +119,7 @@ interface ModuleDef<S, Sol> {
 
 ## Riscos e mitigações
 
-- **WebRTC sem TURN falha em NAT simétrico** → provisionar TURN gratuito (Metered/Cloudflare) já em F7.
+- **WebRTC sem TURN falha em NAT simétrico** → o código já lê `NEXT_PUBLIC_TURN_URL/USERNAME/CREDENTIAL` e as usa quando existem. **Ainda não provisionadas**: hoje a malha sobe só com STUN, o que resolve NAT doméstico comum mas NÃO resolve 4G de operadora nem rede corporativa. Contratar o TURN (Metered/Cloudflare) antes de qualquer playtest fora de casa.
 - **Limites do Supabase Realtime** (free: 200 conexões, 2 M msgs/mês) → deltas em vez de snapshots, teto de 10 Hz, coalescência de eventos de gesto.
 - **R3F em mobile** → orçamento de draw calls, postprocessing desligado em telas pequenas, fallback de qualidade automático.
 - **Host com lag prejudica todos** → mostrar ping de cada peer, permitir troca manual de host no lobby.
