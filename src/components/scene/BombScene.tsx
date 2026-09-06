@@ -14,6 +14,7 @@ import { Avatar } from "./Avatar";
 import { VanInterior } from "./VanInterior";
 import { BombCase } from "./BombCase";
 import type { Role } from "@/types/database";
+import type { PlayColor } from "@/lib/design/palette";
 
 /**
  * Cena da bomba (F5).
@@ -63,7 +64,7 @@ interface BombSceneProps {
   timeLeftMs: number;
   strikes: number;
   maxStrikes: number;
-  simon: { progress: number; sequenceLength: number; solved: boolean };
+  simon: { progress: number; flashSequence: PlayColor[]; solved: boolean };
   interactive: boolean;
   onSimonPress: (buttonIndex: number) => void;
   /** Só o Cego emite; chega aos outros pelo canal de sinais. */

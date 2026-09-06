@@ -18,6 +18,7 @@ import { VoiceBar } from "@/components/VoiceBar";
 import { useVoice } from "@/lib/net/useVoice";
 import { GESTURE_TTL_MS } from "@/lib/game/gestures";
 import type { Database, Role } from "@/types/database";
+import type { PlayColor } from "@/lib/design/palette";
 
 // three.js não pode ser renderizado no servidor, e são ~600kB que não
 // têm por que entrar no bundle de nenhuma outra rota.
@@ -290,7 +291,7 @@ function PartidaGame({
 
   const timeLeft = Math.max(0, bomb.config.timeLimitMs - (now - bomb.startedAtMs));
   const simon = bomb.modules[0];
-  const simonState = simon.state as { sequenceLength: number; progress: number };
+  const simonState = simon.state as { progress: number; flashSequence: PlayColor[] };
   const armed = bomb.status === "armed";
 
   // A regra central do jogo inteiro: SÓ o Cego toca a bomba. Os outros
@@ -313,7 +314,7 @@ function PartidaGame({
           maxStrikes={bomb.config.maxStrikes}
           simon={{
             progress: simonState.progress,
-            sequenceLength: simonState.sequenceLength,
+            flashSequence: simonState.flashSequence,
             solved: simon.solved,
           }}
           interactive={canTouch}

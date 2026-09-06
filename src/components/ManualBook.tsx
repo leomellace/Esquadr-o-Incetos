@@ -45,7 +45,12 @@ export function ManualBook({ pages }: ManualBookProps) {
             Manual de desarme · pág. {index + 1}/{pages.length}
           </p>
           <h2 className="mt-1 font-display text-xl leading-tight font-bold">{page.title}</h2>
-          <p className="mt-2 text-sm leading-relaxed text-outline/85">{page.body}</p>
+          {/* `whitespace-pre-line`: alguns módulos (Simon) trazem uma
+              tabela linha a linha no corpo — sem isto, o `\n` some e
+              a tabela vira uma frase só, ilegível. */}
+          <p className="mt-2 text-sm leading-relaxed whitespace-pre-line text-outline/85">
+            {page.body}
+          </p>
         </div>
       </article>
 

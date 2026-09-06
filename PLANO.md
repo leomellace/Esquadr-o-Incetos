@@ -112,7 +112,7 @@ interface ModuleDef<S, Sol> {
 | F6 ✅ | As 3 visões | **Opus 5** | Visão do Surdo, wireframe do Cego, manual folheável do Mudo |
 | F7 ✅ | Voz WebRTC | Sonnet 5 | Mesh de 3 peers, sinalização via Broadcast, roteamento por papel, push-to-talk, TURN de fallback |
 | F8 ✅ | Comunicação não-verbal | **Opus 5** | Roda de gestos, apontar compartilhado (raycast), emotes, estapear |
-| F9 | Módulos 1–6 | Sonnet (lógica) + **Opus** (visual) | Seis módulos completos nas três visões |
+| F9 🚧 | Módulos 1–6 | Sonnet (lógica) + **Opus** (visual) | Seis módulos completos nas três visões — **1/6** (Simon) feito e verificado como de fato solúvel; faltam Cabos, Teclado de símbolos, Interruptores, Rádio/Morse, Roda de bananas |
 | F10 | Modos de jogo | Sonnet 5 | Campanha (30 fases + curva), Infinito procedural, Personalizado |
 | F11 | Ameaças + Áudio | **Opus 5** | Sistema de ameaças, trilha, SFX espacial, mixagem por papel |
 | F12 | Polish | **Opus 5** | Telas de vitória/explosão, transições, tutorial, performance, playtest |

@@ -8,6 +8,7 @@ import { RevealNearHand } from "./RevealNearHand";
 import { useHandSurface } from "./handTracking";
 import { LcdDisplay3D } from "./LcdDisplay3D";
 import { Simon3D } from "./modules/Simon3D";
+import type { PlayColor } from "@/lib/design/palette";
 
 /**
  * A maleta. Tudo aqui é geometria procedural — caixa arredondada,
@@ -31,7 +32,7 @@ interface BombCaseProps {
   maxStrikes: number;
   simon: {
     progress: number;
-    sequenceLength: number;
+    flashSequence: PlayColor[];
     solved: boolean;
   };
   interactive: boolean;
@@ -128,7 +129,7 @@ export function BombCase({
         <RevealNearHand>
         <Simon3D
           progress={simon.progress}
-          sequenceLength={simon.sequenceLength}
+          flashSequence={simon.flashSequence}
           solved={simon.solved}
           disabled={!interactive}
           onPress={onSimonPress}

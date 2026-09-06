@@ -8,6 +8,7 @@ import { useSceneColors } from "@/lib/design/sceneColors";
 import { OUTLINE_PX } from "../outline";
 import { ToyMaterial, useOutlineColor, useViewMode } from "../viewMode";
 import { PLAY_COLOR_SPECS, type PlayColor } from "@/lib/design/palette";
+import { SIMON_COLORS } from "@/lib/game/modules/simon";
 
 /**
  * Simon em 3D.
@@ -19,8 +20,6 @@ import { PLAY_COLOR_SPECS, type PlayColor } from "@/lib/design/palette";
  * Para o Cego, todos os quatro são idênticos. Ver `ButtonShape` — a
  * primeira versão vazava a silhueta para ele e matava o jogo.
  */
-
-const BUTTON_ORDER: PlayColor[] = ["banana", "alerta", "circuito", "cabo"];
 
 const GRID: [number, number][] = [
   [-0.09, 0.09],
@@ -167,15 +166,68 @@ function ButtonShape({ color, blind }: { color: PlayColor; blind: boolean }) {
   }
 }
 
+/**
+ * A fileira de LEDs que faz o módulo ser jogável.
+ *
+ * Reaproveita a MESMA forma e cor dos botões físicos — de propósito:
+ * é o vocabulário compartilhado do trio (ver comentário de
+ * `ButtonShape`), e usar um símbolo diferente aqui obrigaria a
+ * inventar um segundo vocabulário sem necessidade. O Surdo lê esta
+ * fileira e dita as formas em voz alta, na ordem.
+ *
+ * Duas informações numa fileira só: a cor/forma diz O QUÊ; apagar
+ * para o tom do painel depois de passar diz QUANTO já foi dito — sem
+ * isso o Surdo perde a conta de quantas vezes já falou.
+ */
+function SequenceStrip({ sequence, progress }: { sequence: PlayColor[]; progress: number }) {
+  const colors = useSceneColors();
+  const count = sequence.length;
+  const gap = count > 1 ? Math.min(0.034, 0.27 / (count - 1)) : 0;
+
+  return (
+    <group position={[0, 0.017, -0.122]}>
+      {sequence.map((color, i) => {
+        const said = i < progress;
+        const current = i === progress;
+        const tone = colors.play[color];
+
+        return (
+          <mesh
+            key={i}
+            position={[(i - (count - 1) / 2) * gap, 0, 0]}
+            rotation={[0, SHAPE_YAW[color], 0]}
+            scale={0.46}
+          >
+            <ButtonShape color={color} blind={false} />
+            <meshStandardMaterial
+              color={said ? colors.panel : tone}
+              emissive={current ? tone : "#000000"}
+              emissiveIntensity={current ? 1.3 : 0}
+              roughness={0.35}
+              toneMapped={!current}
+            />
+          </mesh>
+        );
+      })}
+    </group>
+  );
+}
+
 interface Simon3DProps {
   progress: number;
-  sequenceLength: number;
+  /**
+   * A ordem que pisca no módulo. Sempre chega inteira (a bomba é
+   * gerada igual em todo cliente — ver bomb.ts); quem não deveria
+   * enxergá-la simplesmente não a desenha, e é isso que a checagem
+   * `!blind` abaixo faz. Nunca fica vazia por decisão de outra camada.
+   */
+  flashSequence: PlayColor[];
   solved: boolean;
   disabled: boolean;
   onPress: (buttonIndex: number) => void;
 }
 
-export function Simon3D({ progress, sequenceLength, solved, disabled, onPress }: Simon3DProps) {
+export function Simon3D({ progress, flashSequence, solved, disabled, onPress }: Simon3DProps) {
   const colors = useSceneColors();
   const outline = useOutlineColor();
   const blind = useViewMode() === "blind";
@@ -202,34 +254,16 @@ export function Simon3D({ progress, sequenceLength, solved, disabled, onPress }:
           </mesh>
         ))}
 
-      {/* Progresso da sequência.
-          Fica de fora da visão do Cego: são LEDs, não relevo. Ele
-          aperta sem saber se acertou — quem vê tem que avisar. É
-          desconfortável de propósito; é o jogo. */}
-      {!blind && (
-        <group position={[0, 0.017, -0.118]}>
-          {Array.from({ length: sequenceLength }, (_, i) => {
-            const lit = i < progress;
-            return (
-              <mesh
-                key={i}
-                position={[(i - (sequenceLength - 1) / 2) * 0.036, 0, 0]}
-                rotation={[-Math.PI / 2, 0, 0]}
-              >
-                <circleGeometry args={[0.011, 12]} />
-                <meshStandardMaterial
-                  color={lit ? colors.lcd : colors.vanDeep}
-                  emissive={lit ? colors.lcd : "#000000"}
-                  emissiveIntensity={lit ? 1.4 : 0}
-                  toneMapped={false}
-                />
-              </mesh>
-            );
-          })}
-        </group>
+      {/* A fileira que faz o módulo ser jogável: a ordem em que as
+          formas piscam. Fica de fora da visão do Cego — ele aperta
+          sem saber se acertou, quem vê tem que avisar; é desconfortável
+          de propósito, é o jogo. A que já passou apaga para o painel
+          (progresso), a atual acende (é a próxima a ser dita). */}
+      {!blind && flashSequence.length > 0 && (
+        <SequenceStrip sequence={flashSequence} progress={progress} />
       )}
 
-      {BUTTON_ORDER.map((color, index) => (
+      {SIMON_COLORS.map((color, index) => (
         <SimonButton
           key={color}
           color={color}
@@ -243,4 +277,4 @@ export function Simon3D({ progress, sequenceLength, solved, disabled, onPress }:
 }
 
 /** Nome falado de cada botão, para o Surdo ditar ao Cego (F6 usa isto). */
-export const SIMON_BUTTON_LABELS = BUTTON_ORDER.map((c) => PLAY_COLOR_SPECS[c].spoken);
+export const SIMON_BUTTON_LABELS = SIMON_COLORS.map((c) => PLAY_COLOR_SPECS[c].spoken);
