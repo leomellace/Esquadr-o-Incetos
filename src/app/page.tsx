@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ToyButton } from "@/components/ui/ToyButton";
 import { RoleCard } from "@/components/ui/RoleCard";
 import type { Role } from "@/types/database";
@@ -6,6 +9,8 @@ import type { Role } from "@/types/database";
 const ROLES: Role[] = ["cego", "mudo", "surdo"];
 
 export default function Home() {
+  const router = useRouter();
+
   return (
     <main className="relative flex flex-1 flex-col items-center justify-center overflow-hidden px-6 py-16">
       {/* Lâmpada pendurada: a única fonte de luz da van. */}
@@ -27,15 +32,14 @@ export default function Home() {
         </p>
 
         <div className="mt-8 flex flex-wrap justify-center gap-3">
-          <ToyButton size="lg" variant="banana" disabled>
+          <ToyButton size="lg" variant="banana" onClick={() => router.push("/sala/nova")}>
             Criar sala
           </ToyButton>
-          <ToyButton size="lg" variant="panel" disabled>
+          <ToyButton size="lg" variant="panel" onClick={() => router.push("/sala/entrar")}>
             Entrar com código
           </ToyButton>
         </div>
         <p className="mt-3 font-mono text-xs text-cream-dim">
-          lobby chega na F2 ·{" "}
           <Link href="/design" className="underline hover:text-cream">
             ver design system
           </Link>
