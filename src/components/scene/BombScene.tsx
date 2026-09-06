@@ -8,6 +8,8 @@ import { EffectComposer, Bloom, Vignette } from "@react-three/postprocessing";
 import { useSceneColors } from "@/lib/design/sceneColors";
 import { useQualityTier } from "./useQualityTier";
 import { ViewModeProvider } from "./viewMode";
+import { useHandEmitter } from "./handTracking";
+import { HandMarker } from "./HandMarker";
 import { VanInterior } from "./VanInterior";
 import { BombCase } from "./BombCase";
 import type { Role } from "@/types/database";
@@ -46,6 +48,8 @@ interface BombSceneProps {
   simon: { progress: number; sequenceLength: number; solved: boolean };
   interactive: boolean;
   onSimonPress: (buttonIndex: number) => void;
+  /** Só o Cego emite; chega aos outros pelo canal de sinais. */
+  onHandMove?: (point: THREE.Vector3) => void;
 }
 
 export function BombScene(props: BombSceneProps) {
@@ -82,8 +86,10 @@ function SceneContents({
   simon,
   interactive,
   onSimonPress,
+  onHandMove,
   high,
 }: BombSceneProps & { high: boolean }) {
+  useHandEmitter(onHandMove);
   const colors = useSceneColors();
   const camera = CAMERA_BY_ROLE[role];
   const blind = role === "cego";
@@ -126,6 +132,10 @@ function SceneContents({
         interactive={interactive}
         onSimonPress={onSimonPress}
       />
+
+      {/* A mão: para o Cego é a própria lanterna; para os outros é o
+          que permite dizer "mais pra esquerda". */}
+      <HandMarker source={blind ? "local" : "remote"} />
 
       {/* Sem postprocessing no modo cego: não há nada emissivo para o
           bloom pegar, e a vinheta só comeria o contorno nas bordas. */}

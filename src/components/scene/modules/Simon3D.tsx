@@ -12,17 +12,12 @@ import { PLAY_COLOR_SPECS, type PlayColor } from "@/lib/design/palette";
 /**
  * Simon em 3D.
  *
- * A decisão que importa aqui: o glifo da F1 (● ▲ ■ ◆) não é desenhado
- * na tampa do botão — ele É o formato da peça. Círculo vira cilindro,
- * triângulo vira prisma de três lados, quadrado vira cubo, losango vira
- * cubo girado 45°.
+ * O glifo da F1 (● ▲ ■ ◆) vira a FORMA da peça — mas só para quem
+ * enxerga. É acessibilidade: o canal redundante que deixa um jogador
+ * daltônico distinguir os botões sem depender da cor.
  *
- * Isso fecha o argumento que começou em palette.ts: quem enxerga cor
- * precisa DESCREVER a peça para quem não enxerga, e "aperta o
- * triângulo" só funciona se o triângulo for reconhecível por outra via
- * que não a cor. Em 3D, a silhueta sobrevive à luz baixa, ao apagão
- * (F11) e ao daltonismo — a cor virou o canal redundante, não o
- * principal.
+ * Para o Cego, todos os quatro são idênticos. Ver `ButtonShape` — a
+ * primeira versão vazava a silhueta para ele e matava o jogo.
  */
 
 const BUTTON_ORDER: PlayColor[] = ["banana", "alerta", "circuito", "cabo"];
@@ -98,7 +93,7 @@ function SimonButton({ color, position, disabled, onPress }: SimonButtonProps) {
       <mesh
         ref={capRef}
         position={[0, 0.035, 0]}
-        rotation={[0, SHAPE_YAW[color], 0]}
+        rotation={[0, blind ? 0 : SHAPE_YAW[color], 0]}
         castShadow
         onClick={handleClick}
         onPointerOver={(e) => {
@@ -113,7 +108,7 @@ function SimonButton({ color, position, disabled, onPress }: SimonButtonProps) {
           document.body.style.cursor = "auto";
         }}
       >
-        <ButtonShape color={color} />
+        <ButtonShape color={color} blind={blind} />
 
         {/* O destaque é o ÚNICO retorno visual que o Cego tem: diz
             "sua mão está nesta peça", e nada mais. Não é cor
@@ -140,8 +135,24 @@ function SimonButton({ color, position, disabled, onPress }: SimonButtonProps) {
   );
 }
 
-/** Geometria por slot — a silhueta que substitui o glifo desenhado. */
-function ButtonShape({ color }: { color: PlayColor }) {
+/**
+ * Geometria por slot.
+ *
+ * A forma existe para quem ENXERGA: é o canal redundante que deixa um
+ * jogador daltônico distinguir as peças sem depender da cor. Ela nunca
+ * chega ao Cego.
+ *
+ * Isso é deliberado e foi corrigido depois de um erro de projeto: no
+ * primeiro corte a silhueta aparecia também para o Cego, e o jogo
+ * inteiro desmoronava — bastava o Surdo dizer "o triângulo" e o Cego
+ * achava sozinho. Sem forma, ele só tem posição, e o Surdo é obrigado
+ * a guiar a mão: "mais à esquerda, agora sobe". É essa frase que o
+ * jogo quer produzir.
+ */
+function ButtonShape({ color, blind }: { color: PlayColor; blind: boolean }) {
+  // Todas iguais para o Cego: quatro botões idênticos numa grade.
+  if (blind) return <cylinderGeometry args={[0.052, 0.052, 0.034, 16]} />;
+
   switch (color) {
     case "banana": // ● círculo
       return <cylinderGeometry args={[0.048, 0.048, 0.034, 24]} />;

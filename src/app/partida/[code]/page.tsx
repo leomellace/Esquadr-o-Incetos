@@ -10,6 +10,7 @@ import { generateBomb, applyBombAction, checkTimeExpired } from "@/lib/game/bomb
 import type { BombAction, BombConfig, BombState } from "@/lib/game/bomb";
 import { logMatchEvent, finalizeMatch } from "@/lib/game/matchEvents";
 import { syncServerClock, serverNow } from "@/lib/game/serverClock";
+import { setRemoteHand } from "@/components/scene/handTracking";
 import { Panel } from "@/components/ui/Panel";
 import { ManualBook } from "@/components/ManualBook";
 import type { Database, Role } from "@/types/database";
@@ -31,6 +32,12 @@ const BombScene = dynamic(
 type RoomRow = Database["incetos"]["Tables"]["rooms"]["Row"];
 
 /**
+ * Sinal efêmero: onde a mão do Cego está. Não é estado de jogo, não
+ * entra no log — se um pacote se perde, o próximo chega em 66ms.
+ */
+type HandSignal = { kind: "hand"; x: number; y: number; z: number };
+
+/**
  * O que cada papel precisa saber logo de cara. Não é decoração: sem
  * isso, o jogador do papel Cego acha que a tela quebrou, e o Surdo
  * fica clicando numa bomba que não responde.
@@ -38,11 +45,11 @@ type RoomRow = Database["incetos"]["Tables"]["rooms"]["Row"];
 const ROLE_HUD: Record<Role | "espectador", { title: string; hint: string }> = {
   cego: {
     title: "🙈 Você é o Cego",
-    hint: "Só você pode tocar a bomba. Não vê cor, número nem texto — pergunte o que apertar.",
+    hint: "Só você toca a bomba. Passe a mão para descobrir o que existe — e peça direção.",
   },
   surdo: {
     title: "🙉 Você é o Surdo",
-    hint: "Só você vê a bomba inteira. Não pode tocá-la: descreva as peças pela forma.",
+    hint: "Você vê a bomba e a mão dele. Não pode tocar: guie por posição — 'mais à esquerda, sobe'.",
   },
   mudo: {
     title: "🙊 Você é o Mudo",
@@ -209,7 +216,7 @@ function PartidaGame({
     [room.seed, startedAtMs],
   );
 
-  const engine = useGameChannel<BombState, BombAction>({
+  const engine = useGameChannel<BombState, BombAction, HandSignal>({
     roomId: room.id,
     selfProfileId,
     initialState: initialBomb,
@@ -221,6 +228,11 @@ function PartidaGame({
         void logMatchEvent(matchId, fromProfileId, seqRef.current, action);
       }
       return next;
+    },
+    // A mão do Cego chega ~15x/s. Vai direto para o store da cena,
+    // sem passar por state do React: nada aqui precisa re-renderizar.
+    onSignal: (signal) => {
+      if (signal.kind === "hand") setRemoteHand(signal.x, signal.y, signal.z);
     },
   });
 
@@ -263,6 +275,12 @@ function PartidaGame({
           interactive={canTouch}
           onSimonPress={(buttonIndex) =>
             engine.sendAction({ moduleId: "simon", payload: { buttonIndex } })
+          }
+          onHandMove={
+            blind
+              ? (point) =>
+                  engine.sendSignal({ kind: "hand", x: point.x, y: point.y, z: point.z })
+              : undefined
           }
         />
       </div>

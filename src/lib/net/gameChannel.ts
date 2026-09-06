@@ -27,7 +27,7 @@ import { getBrowserClient } from "@/lib/supabase/client";
  * resultante imediatamente, sem esperar o próximo tick agendado. Quem
  * É host aplica localmente sem round-trip.
  */
-export interface GameChannelOptions<TState, TAction> {
+export interface GameChannelOptions<TState, TAction, TSignal = never> {
   roomId: string;
   selfProfileId: string;
   initialState: TState;
@@ -35,28 +35,37 @@ export interface GameChannelOptions<TState, TAction> {
   tick: (state: TState, dtMs: number) => TState;
   /** Chamado só no host, quando alguém (inclusive ele mesmo) envia uma ação. */
   onAction?: (state: TState, action: TAction, fromProfileId: string) => TState;
+  /**
+   * Sinais efêmeros: posição da mão, gestos, apontar. Chegam a todos,
+   * não passam pelo host nem pelo estado, e não são gravados. É o
+   * canal certo para o que muda 15 vezes por segundo e não pode ser
+   * reconstruído depois — porque não precisa ser.
+   */
+  onSignal?: (signal: TSignal, fromProfileId: string) => void;
   tickHz?: number;
   broadcastHz?: number;
 }
 
-export interface GameChannelResult<TState, TAction> {
+export interface GameChannelResult<TState, TAction, TSignal = never> {
   state: TState;
   isHost: boolean;
   hostId: string | null;
   peers: string[];
   connected: boolean;
   sendAction: (action: TAction) => void;
+  sendSignal: (signal: TSignal) => void;
 }
 
-export function useGameChannel<TState, TAction = never>({
+export function useGameChannel<TState, TAction = never, TSignal = never>({
   roomId,
   selfProfileId,
   initialState,
   tick,
   onAction,
+  onSignal,
   tickHz = 20,
   broadcastHz = 10,
-}: GameChannelOptions<TState, TAction>): GameChannelResult<TState, TAction> {
+}: GameChannelOptions<TState, TAction, TSignal>): GameChannelResult<TState, TAction, TSignal> {
   const [state, setState] = useState(initialState);
   const [hostId, setHostId] = useState<string | null>(null);
   const [peers, setPeers] = useState<string[]>([]);
@@ -66,7 +75,9 @@ export function useGameChannel<TState, TAction = never>({
   const hostIdRef = useRef<string | null>(null);
   const tickRef = useRef(tick);
   const onActionRef = useRef(onAction);
+  const onSignalRef = useRef(onSignal);
   const sendActionRef = useRef<(action: TAction) => void>(() => {});
+  const sendSignalRef = useRef<(signal: TSignal) => void>(() => {});
 
   // Refs só podem ser escritas fora do render (React proíbe mutação
   // durante o render, inclusive pensando no React Compiler). Este
@@ -85,6 +96,7 @@ export function useGameChannel<TState, TAction = never>({
   useEffect(() => {
     tickRef.current = tick;
     onActionRef.current = onAction;
+    onSignalRef.current = onSignal;
   });
 
   useEffect(() => {
@@ -174,7 +186,19 @@ export function useGameChannel<TState, TAction = never>({
       }
     };
 
+    sendSignalRef.current = (signal: TSignal) => {
+      channel.send({
+        type: "broadcast",
+        event: "signal",
+        payload: { signal, from: selfProfileId },
+      });
+    };
+
     channel
+      .on("broadcast", { event: "signal" }, ({ payload }) => {
+        const { signal, from } = payload as { signal: TSignal; from: string };
+        onSignalRef.current?.(signal, from);
+      })
       .on("broadcast", { event: "state" }, ({ payload }) => {
         stateRef.current = payload as TState;
         setState(payload as TState);
@@ -209,5 +233,6 @@ export function useGameChannel<TState, TAction = never>({
     peers,
     connected,
     sendAction: (action) => sendActionRef.current(action),
+    sendSignal: (signal) => sendSignalRef.current(signal),
   };
 }

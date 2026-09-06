@@ -4,6 +4,8 @@ import { RoundedBox, Outlines } from "@react-three/drei";
 import { useSceneColors } from "@/lib/design/sceneColors";
 import { OUTLINE_PX } from "./outline";
 import { ToyMaterial, useOutlineColor, useViewMode } from "./viewMode";
+import { RevealNearHand } from "./RevealNearHand";
+import { useHandSurface } from "./handTracking";
 import { LcdDisplay3D } from "./LcdDisplay3D";
 import { Simon3D } from "./modules/Simon3D";
 
@@ -47,6 +49,7 @@ export function BombCase({
   const colors = useSceneColors();
   const outline = useOutlineColor();
   const blind = useViewMode() === "blind";
+  const handSurface = useHandSurface();
   const shellColor = "#39404f";
 
   return (
@@ -71,6 +74,7 @@ export function BombCase({
         smoothness={3}
         position={[0, 0.005, 0]}
         receiveShadow
+        {...handSurface}
       >
         <ToyMaterial color="#1f6b3a" roughness={0.95} />
         {blind && <Outlines thickness={OUTLINE_PX.detail} color={outline} />}
@@ -121,6 +125,7 @@ export function BombCase({
 
       {/* ---- Módulos na bandeja ---- */}
       <group position={[-0.29, 0.04, 0.185]}>
+        <RevealNearHand>
         <Simon3D
           progress={simon.progress}
           sequenceLength={simon.sequenceLength}
@@ -128,16 +133,23 @@ export function BombCase({
           disabled={!interactive}
           onPress={onSimonPress}
         />
+        </RevealNearHand>
       </group>
 
       <group position={[0.29, 0.04, 0.185]}>
-        <BlankBay variant="vents" />
+        <RevealNearHand>
+          <BlankBay variant="vents" />
+        </RevealNearHand>
       </group>
       <group position={[-0.29, 0.04, -0.185]}>
-        <BlankBay variant="label" />
+        <RevealNearHand>
+          <BlankBay variant="label" />
+        </RevealNearHand>
       </group>
       <group position={[0.29, 0.04, -0.185]}>
-        <BlankBay variant="plate" />
+        <RevealNearHand>
+          <BlankBay variant="plate" />
+        </RevealNearHand>
       </group>
 
       {/* ---- Tampa ---- */}
@@ -161,7 +173,9 @@ export function BombCase({
 
         {/* Visor, virado para o jogador com a tampa aberta */}
         <group position={[0, -0.03, 0.42]} rotation={[Math.PI / 2, 0, 0]}>
-          <LcdDisplay3D ms={timeLeftMs} strikes={strikes} maxStrikes={maxStrikes} />
+          <RevealNearHand radius={0.32}>
+            <LcdDisplay3D ms={timeLeftMs} strikes={strikes} maxStrikes={maxStrikes} />
+          </RevealNearHand>
         </group>
       </group>
     </group>
