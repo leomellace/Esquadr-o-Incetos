@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import { useCurrentProfile } from "@/components/NameGate";
 import { getBrowserClient } from "@/lib/supabase/client";
@@ -10,9 +11,21 @@ import type { BombAction, BombConfig, BombState } from "@/lib/game/bomb";
 import { logMatchEvent, finalizeMatch } from "@/lib/game/matchEvents";
 import { syncServerClock, serverNow } from "@/lib/game/serverClock";
 import { Panel } from "@/components/ui/Panel";
-import { ToyButton } from "@/components/ui/ToyButton";
-import { LcdTimer } from "@/components/ui/LcdTimer";
 import type { Database } from "@/types/database";
+
+// three.js não pode ser renderizado no servidor, e são ~600kB que não
+// têm por que entrar no bundle de nenhuma outra rota.
+const BombScene = dynamic(
+  () => import("@/components/scene/BombScene").then((m) => m.BombScene),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="grid h-full place-items-center">
+        <p className="animate-pulse font-mono text-sm text-cream-dim">montando a van...</p>
+      </div>
+    ),
+  },
+);
 
 type RoomRow = Database["incetos"]["Tables"]["rooms"]["Row"];
 
@@ -117,8 +130,6 @@ export default function PartidaPage() {
   );
 }
 
-const SIMON_LABELS = ["●", "▲", "■", "◆"] as const;
-
 /**
  * Só monta depois que sala + partida + seed já são conhecidos — mesmo
  * motivo da F3: `useState(initialState)` só lê o valor inicial uma
@@ -181,65 +192,68 @@ function PartidaGame({
   const timeLeft = Math.max(0, bomb.config.timeLimitMs - (now - bomb.startedAtMs));
   const simon = bomb.modules[0];
   const simonState = simon.state as { sequenceLength: number; progress: number };
+  const armed = bomb.status === "armed";
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-10">
-      <header>
-        <p className="font-mono text-xs tracking-[0.3em] text-cream-dim uppercase">
-          Partida · {room.code}
-        </p>
-        <h1 className="font-display text-3xl font-bold text-cream">
-          Bomba de teste (F4) — visão única, sem separar papéis ainda
-        </h1>
-        <p className="mt-1 text-sm text-cream-dim">
-          A F6 vai esconder isso conforme o papel de cada um. Por ora todo mundo vê tudo, só pra
-          validar o motor.
-        </p>
-      </header>
+    <main className="relative flex-1 overflow-hidden">
+      {/* O canvas precisa de altura definida, não herdada de flex: o
+          R3F mede o pai por ResizeObserver e um pai só com `flex-1`
+          resolve altura percentual como zero. */}
+      <div className="absolute inset-0">
+        <BombScene
+          timeLeftMs={timeLeft}
+          strikes={bomb.strikes}
+          maxStrikes={bomb.config.maxStrikes}
+          simon={{
+            progress: simonState.progress,
+            sequenceLength: simonState.sequenceLength,
+            solved: simon.solved,
+          }}
+          interactive={armed}
+          onSimonPress={(buttonIndex) =>
+            engine.sendAction({ moduleId: "simon", payload: { buttonIndex } })
+          }
+        />
+      </div>
 
-      {bomb.status !== "armed" && (
-        <Panel
-          title={bomb.status === "defused" ? "Bomba desarmada!" : "Bum."}
-          className="text-center"
-        >
-          <p className="font-display text-3xl">{bomb.status === "defused" ? "🎉" : "💥"}</p>
-          <p className="mt-2 text-sm text-cream-dim">
-            {bomb.strikes} strike(s) · {Math.ceil(timeLeft / 1000)}s restantes quando terminou
+      {/* HUD por cima da cena. `pointer-events-none` no container para
+          não roubar o clique dos botões 3D; só o que precisa de clique
+          reativa o ponteiro. */}
+      <div className="pointer-events-none absolute inset-0 flex flex-col justify-between p-5 sm:p-7">
+        <header className="flex items-start justify-between gap-4">
+          <div>
+            <p className="font-mono text-[10px] tracking-[0.3em] text-cream-dim/80 uppercase">
+              Sala {room.code}
+            </p>
+            <p className="font-display text-lg font-semibold text-cream drop-shadow-[0_2px_0_var(--outline)]">
+              {simon.solved ? "Módulo desarmado" : `Simon ${simonState.progress}/${simonState.sequenceLength}`}
+            </p>
+          </div>
+
+          <p className="rounded-lg border border-outline/60 bg-van-deep/70 px-2.5 py-1 font-mono text-[10px] text-cream-dim backdrop-blur-sm">
+            {engine.isHost ? "host" : "peer"} · {engine.peers.length} na sala
           </p>
-        </Panel>
-      )}
+        </header>
 
-      <Panel title="Visor">
-        <LcdTimer ms={timeLeft} strikes={bomb.strikes} maxStrikes={bomb.config.maxStrikes} />
-      </Panel>
+        <footer className="font-mono text-[10px] text-cream-dim/70">
+          F5 · cena 3D — a separação por papel (o que cada um enxerga) chega na F6
+        </footer>
+      </div>
 
-      <Panel title={`Módulo Simon (${simonState.progress}/${simonState.sequenceLength})`}>
-        <div className="flex flex-wrap gap-3">
-          {SIMON_LABELS.map((label, index) => (
-            <ToyButton
-              key={index}
-              size="lg"
-              variant={(["banana", "alerta", "circuito", "cabo"] as const)[index]}
-              disabled={bomb.status !== "armed" || simon.solved}
-              onClick={() =>
-                engine.sendAction({ moduleId: "simon", payload: { buttonIndex: index } })
-              }
-            >
-              {label}
-            </ToyButton>
-          ))}
+      {!armed && (
+        <div className="absolute inset-0 grid place-items-center bg-van-deep/70 p-6 backdrop-blur-[3px]">
+          <Panel
+            title={bomb.status === "defused" ? "Bomba desarmada!" : "Bum."}
+            screws
+            className="max-w-xs text-center"
+          >
+            <p className="text-5xl">{bomb.status === "defused" ? "🎉" : "💥"}</p>
+            <p className="mt-3 text-sm text-cream-dim">
+              {bomb.strikes} erro(s) · {Math.ceil(timeLeft / 1000)}s no relógio
+            </p>
+          </Panel>
         </div>
-        <p className="mt-4 text-sm text-cream-dim">{simon.manual[0].body}</p>
-      </Panel>
-
-      <Panel title="Motor de rede" className="text-sm">
-        <dl className="grid grid-cols-2 gap-y-1">
-          <dt className="text-cream-dim">Você é o host?</dt>
-          <dd className="font-mono">{engine.isHost ? "sim" : "não"}</dd>
-          <dt className="text-cream-dim">Peers</dt>
-          <dd className="font-mono">{engine.peers.length}</dd>
-        </dl>
-      </Panel>
+      )}
     </main>
   );
 }

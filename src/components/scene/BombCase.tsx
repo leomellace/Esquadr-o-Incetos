@@ -1,0 +1,221 @@
+"use client";
+
+import { RoundedBox, Outlines } from "@react-three/drei";
+import { useSceneColors } from "@/lib/design/sceneColors";
+import { OUTLINE_PX } from "./outline";
+import { LcdDisplay3D } from "./LcdDisplay3D";
+import { Simon3D } from "./modules/Simon3D";
+
+/**
+ * A maleta. Tudo aqui é geometria procedural — caixa arredondada,
+ * cilindro, cone — porque não há pipeline de assets nem artista: o
+ * "plástico injetado" da F1 se traduz bem em primitivas grossas com
+ * contorno preto, que é justamente o que o estilo pede.
+ *
+ * A tampa abre ~100°, passando da vertical, para a face interna (onde
+ * mora o visor) ficar virada para o jogador — mesma geometria de uma
+ * tela de notebook.
+ *
+ * As quatro baias existem desde já, mesmo com um módulo só: é onde a
+ * F9 encaixa os outros cinco sem mexer no chassi.
+ */
+
+const LID_OPEN_RAD = -1.75; // ~100°, um pouco além da vertical
+
+interface BombCaseProps {
+  timeLeftMs: number;
+  strikes: number;
+  maxStrikes: number;
+  simon: {
+    progress: number;
+    sequenceLength: number;
+    solved: boolean;
+  };
+  interactive: boolean;
+  onSimonPress: (buttonIndex: number) => void;
+  outlined?: boolean;
+}
+
+export function BombCase({
+  timeLeftMs,
+  strikes,
+  maxStrikes,
+  simon,
+  interactive,
+  onSimonPress,
+  outlined = true,
+}: BombCaseProps) {
+  const colors = useSceneColors();
+  const shellColor = "#39404f";
+
+  return (
+    <group>
+      {/* ---- Casco inferior ---- */}
+      <RoundedBox
+        args={[1.25, 0.16, 0.85]}
+        radius={0.045}
+        smoothness={3}
+        position={[0, -0.08, 0]}
+        castShadow
+        receiveShadow
+      >
+        <meshStandardMaterial color={shellColor} roughness={0.65} />
+        {outlined && <Outlines thickness={OUTLINE_PX.chassis} color={colors.outline} />}
+      </RoundedBox>
+
+      {/* Bandeja interna, verde de feltro */}
+      <RoundedBox
+        args={[1.13, 0.04, 0.73]}
+        radius={0.015}
+        smoothness={3}
+        position={[0, 0.005, 0]}
+        receiveShadow
+      >
+        <meshStandardMaterial color="#1f6b3a" roughness={0.95} />
+      </RoundedBox>
+
+      {/* Cantoneiras de borracha */}
+      {[
+        [-0.58, -0.39],
+        [0.58, -0.39],
+        [-0.58, 0.39],
+        [0.58, 0.39],
+      ].map(([x, z]) => (
+        <RoundedBox
+          key={`${x},${z}`}
+          args={[0.13, 0.13, 0.13]}
+          radius={0.03}
+          smoothness={3}
+          position={[x, -0.08, z]}
+          castShadow
+        >
+          <meshStandardMaterial color={colors.play.banana} roughness={0.5} />
+          {outlined && <Outlines thickness={OUTLINE_PX.part} color={colors.outline} />}
+        </RoundedBox>
+      ))}
+
+      {/* Travas na frente */}
+      {[-0.28, 0.28].map((x) => (
+        <RoundedBox
+          key={x}
+          args={[0.14, 0.07, 0.05]}
+          radius={0.018}
+          smoothness={3}
+          position={[x, -0.03, 0.42]}
+          castShadow
+        >
+          <meshStandardMaterial color={colors.play.banana} roughness={0.4} metalness={0.1} />
+          {outlined && <Outlines thickness={OUTLINE_PX.detail} color={colors.outline} />}
+        </RoundedBox>
+      ))}
+
+      {/* Dobradiças */}
+      {[-0.4, 0.4].map((x) => (
+        <mesh key={x} position={[x, 0.01, -0.42]} rotation={[0, 0, Math.PI / 2]} castShadow>
+          <cylinderGeometry args={[0.022, 0.022, 0.16, 12]} />
+          <meshStandardMaterial color="#8d9199" roughness={0.35} metalness={0.6} />
+        </mesh>
+      ))}
+
+      {/* ---- Módulos na bandeja ---- */}
+      <group position={[-0.29, 0.04, 0.185]}>
+        <Simon3D
+          progress={simon.progress}
+          sequenceLength={simon.sequenceLength}
+          solved={simon.solved}
+          disabled={!interactive}
+          onPress={onSimonPress}
+        />
+      </group>
+
+      <group position={[0.29, 0.04, 0.185]}>
+        <BlankBay variant="vents" outlined={outlined} />
+      </group>
+      <group position={[-0.29, 0.04, -0.185]}>
+        <BlankBay variant="label" outlined={outlined} />
+      </group>
+      <group position={[0.29, 0.04, -0.185]}>
+        <BlankBay variant="plate" outlined={outlined} />
+      </group>
+
+      {/* ---- Tampa ---- */}
+      <group position={[0, 0, -0.42]} rotation={[LID_OPEN_RAD, 0, 0]}>
+        <RoundedBox
+          args={[1.25, 0.1, 0.85]}
+          radius={0.04}
+          smoothness={3}
+          position={[0, 0.05, 0.42]}
+          castShadow
+        >
+          <meshStandardMaterial color={shellColor} roughness={0.65} />
+          {outlined && <Outlines thickness={OUTLINE_PX.chassis} color={colors.outline} />}
+        </RoundedBox>
+
+        {/* Face interna da tampa: forro claro */}
+        <mesh position={[0, -0.002, 0.42]} rotation={[Math.PI / 2, 0, 0]} receiveShadow>
+          <planeGeometry args={[1.13, 0.73]} />
+          <meshStandardMaterial color={colors.panel} roughness={0.9} />
+        </mesh>
+
+        {/* Visor, virado para o jogador com a tampa aberta */}
+        <group position={[0, -0.03, 0.42]} rotation={[Math.PI / 2, 0, 0]}>
+          <LcdDisplay3D ms={timeLeftMs} strikes={strikes} maxStrikes={maxStrikes} />
+        </group>
+      </group>
+    </group>
+  );
+}
+
+/** Baia vazia — existe para o chassi parecer um objeto completo antes da F9. */
+function BlankBay({
+  variant,
+  outlined,
+}: {
+  variant: "vents" | "label" | "plate";
+  outlined: boolean;
+}) {
+  const colors = useSceneColors();
+
+  return (
+    <group>
+      <RoundedBox args={[0.3, 0.03, 0.3]} radius={0.012} smoothness={3} receiveShadow castShadow>
+        <meshStandardMaterial color={colors.panel} roughness={0.75} />
+        {outlined && <Outlines thickness={OUTLINE_PX.detail} color={colors.outline} />}
+      </RoundedBox>
+
+      {variant === "vents" &&
+        [-0.08, -0.027, 0.027, 0.08].map((z) => (
+          <mesh key={z} position={[0, 0.017, z]} rotation={[-Math.PI / 2, 0, 0]}>
+            <planeGeometry args={[0.22, 0.022]} />
+            <meshStandardMaterial color={colors.vanDeep} roughness={1} />
+          </mesh>
+        ))}
+
+      {variant === "label" && (
+        <mesh position={[0, 0.017, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[0.2, 0.12]} />
+          <meshStandardMaterial color={colors.play.banana} roughness={0.8} />
+        </mesh>
+      )}
+
+      {variant === "plate" && (
+        <mesh position={[0, 0.023, 0]}>
+          <cylinderGeometry args={[0.05, 0.05, 0.016, 16]} />
+          <meshStandardMaterial color={colors.panelHi} roughness={0.5} metalness={0.2} />
+        </mesh>
+      )}
+
+      {[
+        [-0.12, 0.12],
+        [0.12, 0.12],
+        [-0.12, -0.12],
+        [0.12, -0.12],
+      ].map(([x, z]) => (
+        <mesh key={`${x},${z}`} position={[x, 0.017, z]} rotation={[-Math.PI / 2, 0, 0]}>
+          <circleGeometry args={[0.009, 8]} />
+          <meshStandardMaterial color={colors.vanDeep} roughness={0.5} />
+        </mesh>
+      ))}
+    </group>
+  );
+}

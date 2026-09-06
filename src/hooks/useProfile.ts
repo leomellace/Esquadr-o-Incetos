@@ -7,6 +7,24 @@ import type { Database } from "@/types/database";
 
 type Profile = Database["incetos"]["Tables"]["profiles"]["Row"];
 
+/**
+ * Erros do Supabase (PostgrestError, AuthError) são objetos simples,
+ * não subclasses de Error — um `err instanceof Error` os transforma
+ * silenciosamente em "erro desconhecido" e esconde exatamente a
+ * mensagem que diria o que houve. Acontecia aqui.
+ */
+function describeError(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object" && err !== null) {
+    const candidate = err as { message?: unknown; error_description?: unknown; code?: unknown };
+    const message = candidate.message ?? candidate.error_description;
+    if (typeof message === "string" && message) {
+      return typeof candidate.code === "string" ? `${message} (${candidate.code})` : message;
+    }
+  }
+  return "Erro desconhecido";
+}
+
 interface UseProfileResult {
   profile: Profile | null;
   loading: boolean;
@@ -71,9 +89,7 @@ export function useProfile(): UseProfileResult {
         if (!cancelled) setProfile(p);
       })
       .catch((err: unknown) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Erro desconhecido");
-        }
+        if (!cancelled) setError(describeError(err));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

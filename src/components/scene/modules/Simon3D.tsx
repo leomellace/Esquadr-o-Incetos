@@ -1,0 +1,211 @@
+"use client";
+
+import { useMemo, useRef, useState } from "react";
+import * as THREE from "three";
+import { useFrame } from "@react-three/fiber";
+import { RoundedBox, Outlines } from "@react-three/drei";
+import { useSceneColors } from "@/lib/design/sceneColors";
+import { OUTLINE_PX } from "../outline";
+import { PLAY_COLOR_SPECS, type PlayColor } from "@/lib/design/palette";
+
+/**
+ * Simon em 3D.
+ *
+ * A decisão que importa aqui: o glifo da F1 (● ▲ ■ ◆) não é desenhado
+ * na tampa do botão — ele É o formato da peça. Círculo vira cilindro,
+ * triângulo vira prisma de três lados, quadrado vira cubo, losango vira
+ * cubo girado 45°.
+ *
+ * Isso fecha o argumento que começou em palette.ts: quem enxerga cor
+ * precisa DESCREVER a peça para quem não enxerga, e "aperta o
+ * triângulo" só funciona se o triângulo for reconhecível por outra via
+ * que não a cor. Em 3D, a silhueta sobrevive à luz baixa, ao apagão
+ * (F11) e ao daltonismo — a cor virou o canal redundante, não o
+ * principal.
+ */
+
+const BUTTON_ORDER: PlayColor[] = ["banana", "alerta", "circuito", "cabo"];
+
+const GRID: [number, number][] = [
+  [-0.09, 0.09],
+  [0.09, 0.09],
+  [-0.09, -0.09],
+  [0.09, -0.09],
+];
+
+// A silhueta só comunica se estiver na orientação certa vista de cima:
+// o triângulo com a ponta para longe do jogador, o losango como losango
+// (e não como um quadrado girado por acaso).
+const SHAPE_YAW: Record<PlayColor, number> = {
+  banana: 0,
+  alerta: Math.PI / 6,
+  circuito: 0,
+  cabo: Math.PI / 4,
+  fio: 0,
+};
+
+interface SimonButtonProps {
+  color: PlayColor;
+  position: [number, number, number];
+  disabled: boolean;
+  onPress: () => void;
+}
+
+function SimonButton({ color, position, disabled, onPress }: SimonButtonProps) {
+  const colors = useSceneColors();
+  const capRef = useRef<THREE.Mesh>(null);
+  const pressRef = useRef(0);
+  const [hovered, setHovered] = useState(false);
+
+  const baseColor = colors.play[color];
+
+  // Mesma física do ToyButton da F1: a peça afunda o próprio curso e
+  // volta com overshoot, em vez de "piscar" um estado novo.
+  useFrame((_, delta) => {
+    pressRef.current = Math.max(0, pressRef.current - delta * 6);
+    if (capRef.current) {
+      const lift = hovered && !disabled ? 0.008 : 0;
+      capRef.current.position.y = 0.035 + lift - pressRef.current * 0.028;
+    }
+  });
+
+  const tint = useMemo(() => {
+    if (!disabled) return baseColor;
+    // Desligado: puxa para o painel, mantendo a silhueta legível.
+    return new THREE.Color(baseColor).lerp(new THREE.Color(colors.panel), 0.55).getStyle();
+  }, [baseColor, disabled, colors.panel]);
+
+  function handleClick(event: { stopPropagation: () => void }) {
+    event.stopPropagation();
+    if (disabled) return;
+    pressRef.current = 1;
+    onPress();
+  }
+
+  return (
+    <group position={position}>
+      {/* Soquete: o furo no painel onde a peça encaixa */}
+      <mesh position={[0, 0.012, 0]} receiveShadow>
+        <cylinderGeometry args={[0.062, 0.062, 0.024, 20]} />
+        <meshStandardMaterial color={colors.vanDeep} roughness={0.9} />
+        <Outlines thickness={OUTLINE_PX.detail} color={colors.outline} />
+      </mesh>
+
+      {/* A peça: a forma É o glifo */}
+      <mesh
+        ref={capRef}
+        position={[0, 0.035, 0]}
+        rotation={[0, SHAPE_YAW[color], 0]}
+        castShadow
+        onClick={handleClick}
+        onPointerOver={(e) => {
+          e.stopPropagation();
+          if (!disabled) {
+            setHovered(true);
+            document.body.style.cursor = "pointer";
+          }
+        }}
+        onPointerOut={() => {
+          setHovered(false);
+          document.body.style.cursor = "auto";
+        }}
+      >
+        <ButtonShape color={color} />
+        <meshStandardMaterial
+          color={tint}
+          roughness={0.32}
+          metalness={0}
+          emissive={tint}
+          emissiveIntensity={hovered && !disabled ? 0.35 : 0.08}
+        />
+        <Outlines thickness={OUTLINE_PX.detail} color={colors.outline} />
+      </mesh>
+    </group>
+  );
+}
+
+/** Geometria por slot — a silhueta que substitui o glifo desenhado. */
+function ButtonShape({ color }: { color: PlayColor }) {
+  switch (color) {
+    case "banana": // ● círculo
+      return <cylinderGeometry args={[0.048, 0.048, 0.034, 24]} />;
+    case "alerta": // ▲ triângulo
+      return <cylinderGeometry args={[0.058, 0.058, 0.034, 3]} />;
+    case "circuito": // ■ quadrado
+      return <boxGeometry args={[0.082, 0.034, 0.082]} />;
+    case "cabo": // ◆ losango (o mesmo cubo, girado)
+      return <boxGeometry args={[0.07, 0.034, 0.07]} />;
+    default:
+      return <cylinderGeometry args={[0.048, 0.048, 0.034, 24]} />;
+  }
+}
+
+interface Simon3DProps {
+  progress: number;
+  sequenceLength: number;
+  solved: boolean;
+  disabled: boolean;
+  onPress: (buttonIndex: number) => void;
+}
+
+export function Simon3D({ progress, sequenceLength, solved, disabled, onPress }: Simon3DProps) {
+  const colors = useSceneColors();
+
+  return (
+    <group>
+      {/* Placa do módulo, aparafusada na bandeja */}
+      <RoundedBox args={[0.3, 0.03, 0.3]} radius={0.012} smoothness={3} receiveShadow castShadow>
+        <meshStandardMaterial color={colors.panelHi} roughness={0.6} />
+        <Outlines thickness={OUTLINE_PX.detail} color={colors.outline} />
+      </RoundedBox>
+
+      {/* Parafusos nos cantos — a mesma linguagem do <Panel> da F1 */}
+      {[
+        [-0.12, 0.12],
+        [0.12, 0.12],
+        [-0.12, -0.12],
+        [0.12, -0.12],
+      ].map(([x, z]) => (
+        <mesh key={`${x},${z}`} position={[x, 0.016, z]} rotation={[-Math.PI / 2, 0, 0]}>
+          <circleGeometry args={[0.009, 8]} />
+          <meshStandardMaterial color={colors.vanDeep} roughness={0.5} />
+        </mesh>
+      ))}
+
+      {/* Progresso da sequência */}
+      <group position={[0, 0.017, -0.118]}>
+        {Array.from({ length: sequenceLength }, (_, i) => {
+          const lit = i < progress;
+          return (
+            <mesh
+              key={i}
+              position={[(i - (sequenceLength - 1) / 2) * 0.036, 0, 0]}
+              rotation={[-Math.PI / 2, 0, 0]}
+            >
+              <circleGeometry args={[0.011, 12]} />
+              <meshStandardMaterial
+                color={lit ? colors.lcd : colors.vanDeep}
+                emissive={lit ? colors.lcd : "#000000"}
+                emissiveIntensity={lit ? 1.4 : 0}
+                toneMapped={false}
+              />
+            </mesh>
+          );
+        })}
+      </group>
+
+      {BUTTON_ORDER.map((color, index) => (
+        <SimonButton
+          key={color}
+          color={color}
+          position={[GRID[index][0], 0.015, -GRID[index][1] + 0.02]}
+          disabled={disabled || solved}
+          onPress={() => onPress(index)}
+        />
+      ))}
+    </group>
+  );
+}
+
+/** Nome falado de cada botão, para o Surdo ditar ao Cego (F6 usa isto). */
+export const SIMON_BUTTON_LABELS = BUTTON_ORDER.map((c) => PLAY_COLOR_SPECS[c].spoken);
