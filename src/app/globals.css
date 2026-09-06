@@ -1,26 +1,123 @@
 @import "tailwindcss";
 
+/* ============================================================
+   ESQUADRÃO INCETOS — Design System
+   Direção: "Plástico Injetado".
+   Tudo na tela é um objeto físico de brinquedo dentro de uma van
+   escura, sob uma lâmpada quente. Plástico grosso, contorno preto
+   marcado, sombra dura (sem blur macio), cores saturadas de kit
+   infantil. Nada é "flat": tudo tem espessura e pode ser apertado.
+   ============================================================ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: dark;
+
+  /* ---- Estrutura: o interior da van à noite ---- */
+  --van-deep: #080c22; /* sombra mais profunda, fundo absoluto   */
+  --van: #101740; /* chão base da interface                 */
+  --panel: #1c2760; /* painel de plástico elevado             */
+  --panel-hi: #2b3a84; /* aresta superior iluminada do painel    */
+  --outline: #050813; /* contorno grosso de brinquedo           */
+  --cream: #f5efe0; /* plástico branco e papel do manual      */
+  --cream-dim: #cfc5ae; /* mesmo creme, na sombra                 */
+  --lamp: #ffb84d; /* luz quente da lâmpada pendurada        */
+
+  /* ---- LCD do timer: verde ácido com dígitos pretos ---- */
+  --lcd: #7bd94a;
+  --lcd-dim: #4e9a2c;
+  --lcd-ink: #0d1a06;
+
+  /* ---- Cores de jogo ----------------------------------
+     Cinco slots semânticos usados pelos módulos da bomba.
+     NUNCA usar direto: passar por <ColorChip>, que emite cor
+     + glifo + nome. A cor sozinha é o canal menos confiável
+     que temos — é literalmente o que o Cego não recebe.
+
+     INVARIANTE: toda peça vive na metade CLARA do espectro.
+     Ela precisa aceitar tinta escura (glifo ≥ 4.5:1) e ainda
+     se destacar do painel escuro (≥ 3:1). Peça escura falha
+     nas duas coisas de uma vez — foi o que os testes pegaram
+     quando tentamos usar azul-petróleo e vinho.
+     Garantido em tests/unit/contrast.test.ts.                */
+  --play-banana: #ffc93c;
+  --play-alerta: #ff5647;
+  --play-circuito: #2fd16d;
+  --play-cabo: #4fa8ff;
+  --play-fio: #c77cff;
+
+  /* Tinta do glifo. Uma só, porque a invariante acima garante
+     que toda peça é clara o bastante para recebê-la. */
+  --ink-play: var(--outline);
+}
+
+/* ---- Protanopia / Deuteranopia (vermelho-verde) ----
+   Vermelho e verde colapsam. Reposicionamos tudo no eixo
+   azul-amarelo, que sobrevive aos dois, e abrimos distância de
+   LUMINOSIDADE e de SATURAÇÃO entre os slots. Ainda assim é o
+   glifo que carrega a informação; a cor só acelera a leitura. */
+[data-cvd="protan_deutan"] {
+  --play-banana: #ffd83f; /* amarelo puro       — o mais claro  */
+  --play-alerta: #ff8c2e; /* laranja vivo       — médio         */
+  --play-circuito: #3fd4e8; /* ciano saturado     — sai do eixo   */
+  --play-cabo: #6fa0ff; /* azul médio         — o mais escuro */
+  --play-fio: #d9c2f5; /* lavanda dessaturada— claro e lavado */
+}
+
+/* ---- Tritanopia (azul-amarelo) ----
+   Azul e verde colapsam; amarelo tende ao rosa. Reposicionamos
+   no eixo vermelho-verde, que a tritanopia preserva. */
+[data-cvd="tritan"] {
+  --play-banana: #ffd6a5; /* pêssego claro                      */
+  --play-alerta: #f4606c; /* vermelho coral                     */
+  --play-circuito: #3fbb5c; /* verde médio                        */
+  --play-cabo: #7cc3d8; /* azul claro — separado por luz      */
+  --play-fio: #c98ae8; /* roxo claro                         */
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-van-deep: var(--van-deep);
+  --color-van: var(--van);
+  --color-panel: var(--panel);
+  --color-panel-hi: var(--panel-hi);
+  --color-outline: var(--outline);
+  --color-cream: var(--cream);
+  --color-cream-dim: var(--cream-dim);
+  --color-lamp: var(--lamp);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-lcd: var(--lcd);
+  --color-lcd-dim: var(--lcd-dim);
+  --color-lcd-ink: var(--lcd-ink);
+
+  --color-banana: var(--play-banana);
+  --color-alerta: var(--play-alerta);
+  --color-circuito: var(--play-circuito);
+  --color-cabo: var(--play-cabo);
+  --color-fio: var(--play-fio);
+  --color-ink-play: var(--ink-play);
+
+  --font-display: var(--font-fredoka), system-ui, sans-serif;
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  /* Plástico não desacelera com suavidade: ele bate e quica. */
+  --ease-toy: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-snap: cubic-bezier(0.2, 0, 0, 1);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--van);
+  color: var(--cream);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* Respeita quem pediu menos movimento — e o jogo já é caótico
+   o bastante sem animação extra. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
