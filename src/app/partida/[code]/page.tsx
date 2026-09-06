@@ -13,6 +13,8 @@ import { syncServerClock, serverNow } from "@/lib/game/serverClock";
 import { setRemoteHand } from "@/components/scene/handTracking";
 import { Panel } from "@/components/ui/Panel";
 import { ManualBook } from "@/components/ManualBook";
+import { GestureWheel } from "@/components/GestureWheel";
+import { GESTURE_TTL_MS } from "@/lib/game/gestures";
 import type { Database, Role } from "@/types/database";
 
 // three.js não pode ser renderizado no servidor, e são ~600kB que não
@@ -35,7 +37,9 @@ type RoomRow = Database["incetos"]["Tables"]["rooms"]["Row"];
  * Sinal efêmero: onde a mão do Cego está. Não é estado de jogo, não
  * entra no log — se um pacote se perde, o próximo chega em 66ms.
  */
-type HandSignal = { kind: "hand"; x: number; y: number; z: number };
+type HandSignal =
+  | { kind: "hand"; x: number; y: number; z: number }
+  | { kind: "gesture"; gesture: string; role: Role };
 
 /**
  * O que cada papel precisa saber logo de cara. Não é decoração: sem
@@ -200,6 +204,9 @@ function PartidaGame({
   const [now, setNow] = useState(0);
   const seqRef = useRef(0);
   const finalizedRef = useRef(false);
+  // Gestos no ar. Estes SIM viram state: são poucos, esporádicos, e a
+  // cena precisa re-renderizar para o balão aparecer.
+  const [gestures, setGestures] = useState<Partial<Record<Role, { id: string; at: number }>>>({});
 
   useEffect(() => {
     const id = setInterval(() => setNow(serverNow()), 100);
@@ -229,10 +236,19 @@ function PartidaGame({
       }
       return next;
     },
-    // A mão do Cego chega ~15x/s. Vai direto para o store da cena,
-    // sem passar por state do React: nada aqui precisa re-renderizar.
+    // A mão do Cego chega ~15x/s: vai direto para o store da cena, sem
+    // passar por state do React. Gesto é raro e precisa de render.
     onSignal: (signal) => {
-      if (signal.kind === "hand") setRemoteHand(signal.x, signal.y, signal.z);
+      if (signal.kind === "hand") {
+        setRemoteHand(signal.x, signal.y, signal.z);
+        return;
+      }
+      if (signal.kind === "gesture") {
+        setGestures((prev) => ({
+          ...prev,
+          [signal.role]: { id: signal.gesture, at: serverNow() },
+        }));
+      }
     },
   });
 
@@ -243,6 +259,27 @@ function PartidaGame({
     finalizedRef.current = true;
     void finalizeMatch(matchId, room.id, bomb, serverNow());
   }, [bomb, isHost, matchId, room.id]);
+
+  // Gesto tem prazo: some sozinho depois de GESTURE_TTL_MS. Filtrar na
+  // renderização (em vez de agendar um timer por gesto) já basta,
+  // porque `now` avança 10x/s de qualquer forma.
+  const liveGestures = useMemo(() => {
+    const out: Partial<Record<Role, { id: string; at: number }>> = {};
+    for (const [seat, gesture] of Object.entries(gestures)) {
+      if (gesture && now - gesture.at < GESTURE_TTL_MS) {
+        out[seat as Role] = gesture;
+      }
+    }
+    return out;
+  }, [gestures, now]);
+
+  function emitGesture(id: string) {
+    if (role === "espectador") return;
+    // Aparece na própria tela também: sem isso o jogador não sabe se o
+    // gesto saiu, e acaba mandando três vezes.
+    setGestures((prev) => ({ ...prev, [role]: { id, at: serverNow() } }));
+    engine.sendSignal({ kind: "gesture", gesture: id, role });
+  }
 
   const timeLeft = Math.max(0, bomb.config.timeLimitMs - (now - bomb.startedAtMs));
   const simon = bomb.modules[0];
@@ -282,6 +319,7 @@ function PartidaGame({
                   engine.sendSignal({ kind: "hand", x: point.x, y: point.y, z: point.z })
               : undefined
           }
+          gestures={liveGestures}
         />
       </div>
 
@@ -314,13 +352,18 @@ function PartidaGame({
           </div>
         )}
 
-        {role !== "mudo" && (
-          <footer className="font-mono text-[10px] text-cream-dim/70">
+        <footer className="flex items-end justify-between gap-4">
+          <p className="font-mono text-[10px] text-cream-dim/70">
             {blind
               ? "sem cor, sem número, sem manual — pergunte"
-              : "você não pode tocar na bomba; descreva o que vê"}
-          </footer>
-        )}
+              : "você não pode tocar na bomba"}
+          </p>
+          <GestureWheel
+            onGesture={emitGesture}
+            active={role === "espectador" ? null : (liveGestures[role] ?? null)}
+            disabled={role === "espectador"}
+          />
+        </footer>
       </div>
 
       {!armed && (

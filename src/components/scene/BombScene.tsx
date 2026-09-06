@@ -10,6 +10,7 @@ import { useQualityTier } from "./useQualityTier";
 import { ViewModeProvider } from "./viewMode";
 import { useHandEmitter } from "./handTracking";
 import { HandMarker } from "./HandMarker";
+import { Avatar } from "./Avatar";
 import { VanInterior } from "./VanInterior";
 import { BombCase } from "./BombCase";
 import type { Role } from "@/types/database";
@@ -29,14 +30,31 @@ import type { Role } from "@/types/database";
 /** Miolo da maleta: um pouco acima da bandeja, entre os módulos e o visor. */
 const LOOK_AT = new THREE.Vector3(0, 0.18, -0.05);
 
-/** Enquadramento por papel. A F6 troca a câmera; a cena não muda. */
+/**
+ * Onde cada macaco senta.
+ *
+ * A geometria não é arbitrária: o visor fica na tampa, que abre para
+ * trás, então quem precisa LER o visor tem que estar na frente. Cego e
+ * Surdo ficam do lado de cá; o Mudo atravessa para o fundo, e é por
+ * isso que ele aparece por cima da bomba no enquadramento dos outros
+ * dois — que é exatamente onde o Surdo precisa vê-lo gesticular.
+ */
+const SEAT_BY_ROLE: Record<Role, [number, number, number]> = {
+  cego: [-0.5, -0.24, 1.3],
+  surdo: [0.85, -0.24, 1.05],
+  // Fora da largura da tampa (a maleta tem 1,25): atrás dela, o Mudo
+  // ficaria escondido justo de quem precisa ler os gestos dele.
+  mudo: [-1.05, -0.24, -0.85],
+};
+
+/** Enquadramento por papel: a câmera fica na altura dos olhos de cada assento. */
 const CAMERA_BY_ROLE: Record<Role | "espectador", { position: [number, number, number]; fov: number }> = {
-  // Vê a bomba inteira: precisa de leitura ampla, incluindo o visor.
-  surdo: { position: [0, 0.9, 1.5], fov: 40 },
+  // Vê a bomba inteira E o Mudo do outro lado da mesa: campo mais largo.
+  surdo: { position: [0.55, 0.92, 1.55], fov: 48 },
   // É quem toca: câmera mais baixa e próxima, à distância do braço.
   cego: { position: [0, 0.66, 1.28], fov: 44 },
-  // Lê o manual: fica um pouco atrás e de lado, a bomba é referência.
-  mudo: { position: [0.5, 0.9, 1.75], fov: 38 },
+  // Lê o manual, do outro lado, de frente para os outros dois.
+  mudo: { position: [-0.9, 0.86, -1.0], fov: 48 },
   espectador: { position: [0, 0.9, 1.5], fov: 40 },
 };
 
@@ -50,6 +68,8 @@ interface BombSceneProps {
   onSimonPress: (buttonIndex: number) => void;
   /** Só o Cego emite; chega aos outros pelo canal de sinais. */
   onHandMove?: (point: THREE.Vector3) => void;
+  /** Gesto no ar de cada papel, vindo da rede. */
+  gestures?: Partial<Record<Role, { id: string; at: number } | null>>;
 }
 
 export function BombScene(props: BombSceneProps) {
@@ -87,6 +107,7 @@ function SceneContents({
   interactive,
   onSimonPress,
   onHandMove,
+  gestures,
   high,
 }: BombSceneProps & { high: boolean }) {
   useHandEmitter(onHandMove);
@@ -121,6 +142,19 @@ function SceneContents({
           <directionalLight position={[-2, 0.6, 2.5]} intensity={0.45} color="#6f86c9" />
 
           <VanInterior outlined={high} />
+
+          {/* Os outros dois macacos. O próprio jogador não se desenha:
+              é a visão dele, não um retrato. */}
+          {(["cego", "surdo", "mudo"] as Role[])
+            .filter((seat) => seat !== role)
+            .map((seat) => (
+              <Avatar
+                key={seat}
+                role={seat}
+                position={SEAT_BY_ROLE[seat]}
+                gesture={gestures?.[seat] ?? null}
+              />
+            ))}
         </>
       )}
 
