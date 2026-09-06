@@ -103,15 +103,15 @@ interface ModuleDef<S, Sol> {
 
 | # | Fase | Modelo | Entrega |
 |---|---|---|---|
-| F0 | Fundação | Sonnet 5 | Scaffold Next 15, lint, testes, Supabase local + remoto, migrations, deploy Vercel |
-| F1 | Design System | **Opus 5** | Identidade visual, paleta, tipografia, tokens, componentes base, 3 variantes de daltonismo, linguagem de movimento |
-| F2 | Auth + Lobby | Sonnet 5 | Auth anônima, perfil, sala por código, presença, seleção exclusiva de papel, ready-check |
-| F3 | Netcode | Sonnet 5 | Canal realtime, protocolo tipado, loop host-authoritative, reconexão, migração de host |
-| F4 | Motor de bomba | Sonnet 5 | PRNG determinístico, geração por seed, timer, strikes, vitória/derrota, validação na Edge Function |
-| F5 | Cena 3D | **Opus 5** | Van + bomba em R3F, look plástico de brinquedo (outline, bloom, sombra macia), câmera por papel, orçamento de perf mobile |
-| F6 | As 3 visões | **Opus 5** | Visão do Surdo, wireframe do Cego, manual folheável do Mudo |
+| F0 ✅ | Fundação | Sonnet 5 | Scaffold Next 15, lint, testes, Supabase local + remoto, migrations, deploy Vercel |
+| F1 ✅ | Design System | **Opus 5** | Identidade visual, paleta, tipografia, tokens, componentes base, 3 variantes de daltonismo, linguagem de movimento |
+| F2 ✅ | Auth + Lobby | Sonnet 5 | Auth anônima, perfil, sala por código, presença, seleção exclusiva de papel, ready-check |
+| F3 ✅ | Netcode | Sonnet 5 | Canal realtime, protocolo tipado, loop host-authoritative, reconexão, migração de host |
+| F4 ✅ | Motor de bomba | Sonnet 5 | PRNG determinístico, geração por seed, timer, strikes, vitória/derrota, validação na Edge Function |
+| F5 ✅ | Cena 3D | **Opus 5** | Van + bomba em R3F, look plástico de brinquedo (outline, bloom, sombra macia), câmera por papel, orçamento de perf mobile |
+| F6 ✅ | As 3 visões | **Opus 5** | Visão do Surdo, wireframe do Cego, manual folheável do Mudo |
 | F7 | Voz WebRTC | Sonnet 5 | Mesh de 3 peers, sinalização via Broadcast, roteamento por papel, push-to-talk, TURN de fallback |
-| F8 | Comunicação não-verbal | **Opus 5** | Roda de gestos, apontar compartilhado (raycast), emotes, estapear |
+| F8 ✅ | Comunicação não-verbal | **Opus 5** | Roda de gestos, apontar compartilhado (raycast), emotes, estapear |
 | F9 | Módulos 1–6 | Sonnet (lógica) + **Opus** (visual) | Seis módulos completos nas três visões |
 | F10 | Modos de jogo | Sonnet 5 | Campanha (30 fases + curva), Infinito procedural, Personalizado |
 | F11 | Ameaças + Áudio | **Opus 5** | Sistema de ameaças, trilha, SFX espacial, mixagem por papel |
