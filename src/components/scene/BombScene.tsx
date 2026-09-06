@@ -7,6 +7,7 @@ import { PerspectiveCamera, AdaptiveDpr, Preload } from "@react-three/drei";
 import { EffectComposer, Bloom, Vignette } from "@react-three/postprocessing";
 import { useSceneColors } from "@/lib/design/sceneColors";
 import { useQualityTier } from "./useQualityTier";
+import { ViewModeProvider } from "./viewMode";
 import { VanInterior } from "./VanInterior";
 import { BombCase } from "./BombCase";
 import type { Role } from "@/types/database";
@@ -55,7 +56,7 @@ export function BombScene(props: BombSceneProps) {
     <Canvas
       // "percentage" = PCFShadowMap. O PCFSoft foi depreciado no
       // three 185, e é ele que o <SoftShadows> do drei liga por baixo.
-      shadows="percentage"
+      shadows={props.role === "cego" ? false : "percentage"}
       dpr={[1, high ? 2 : 1.5]}
       gl={{
         antialias: high,
@@ -85,29 +86,37 @@ function SceneContents({
 }: BombSceneProps & { high: boolean }) {
   const colors = useSceneColors();
   const camera = CAMERA_BY_ROLE[role];
+  const blind = role === "cego";
 
   return (
-    <>
+    <ViewModeProvider value={blind ? "blind" : "sighted"}>
       <ResponsiveCamera base={camera} />
 
-      <color attach="background" args={[colors.vanDeep]} />
-      <fog attach="fog" args={[colors.vanDeep, 3.5, 9]} />
+      {/* O Cego não está num lugar escuro: ele não está num lugar. O
+          fundo é preto puro e a van não é desenhada — o que existe
+          para ele é só o objeto que a mão alcança. */}
+      <color attach="background" args={[blind ? "#000000" : colors.vanDeep]} />
+      {!blind && <fog attach="fog" args={[colors.vanDeep, 3.5, 9]} />}
 
-      {/* Preenchimento frio, só para o breu não engolir a silhueta */}
-      <ambientLight intensity={0.55} color="#8fa5d8" />
+      {!blind && (
+        <>
+          {/* Preenchimento frio, só para o breu não engolir a silhueta */}
+          <ambientLight intensity={0.55} color="#8fa5d8" />
 
-      {/* A janela: chapada, fria, vindo de trás */}
-      <directionalLight
-        position={[2.4, 2.2, -3]}
-        intensity={1.1}
-        color="#bcd9ff"
-        castShadow={false}
-      />
+          {/* A janela: chapada, fria, vindo de trás */}
+          <directionalLight
+            position={[2.4, 2.2, -3]}
+            intensity={1.1}
+            color="#bcd9ff"
+            castShadow={false}
+          />
 
-      {/* Contraluz baixa, para separar a maleta do fundo */}
-      <directionalLight position={[-2, 0.6, 2.5]} intensity={0.45} color="#6f86c9" />
+          {/* Contraluz baixa, para separar a maleta do fundo */}
+          <directionalLight position={[-2, 0.6, 2.5]} intensity={0.45} color="#6f86c9" />
 
-      <VanInterior outlined={high} />
+          <VanInterior outlined={high} />
+        </>
+      )}
 
       <BombCase
         timeLeftMs={timeLeftMs}
@@ -116,10 +125,11 @@ function SceneContents({
         simon={simon}
         interactive={interactive}
         onSimonPress={onSimonPress}
-        outlined
       />
 
-      {high && (
+      {/* Sem postprocessing no modo cego: não há nada emissivo para o
+          bloom pegar, e a vinheta só comeria o contorno nas bordas. */}
+      {high && !blind && (
         <EffectComposer>
           <Bloom
             intensity={0.55}
@@ -131,7 +141,7 @@ function SceneContents({
           <Vignette offset={0.28} darkness={0.62} eskil={false} />
         </EffectComposer>
       )}
-    </>
+    </ViewModeProvider>
   );
 }
 

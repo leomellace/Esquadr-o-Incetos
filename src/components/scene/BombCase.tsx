@@ -3,6 +3,7 @@
 import { RoundedBox, Outlines } from "@react-three/drei";
 import { useSceneColors } from "@/lib/design/sceneColors";
 import { OUTLINE_PX } from "./outline";
+import { ToyMaterial, useOutlineColor, useViewMode } from "./viewMode";
 import { LcdDisplay3D } from "./LcdDisplay3D";
 import { Simon3D } from "./modules/Simon3D";
 
@@ -33,7 +34,6 @@ interface BombCaseProps {
   };
   interactive: boolean;
   onSimonPress: (buttonIndex: number) => void;
-  outlined?: boolean;
 }
 
 export function BombCase({
@@ -43,9 +43,10 @@ export function BombCase({
   simon,
   interactive,
   onSimonPress,
-  outlined = true,
 }: BombCaseProps) {
   const colors = useSceneColors();
+  const outline = useOutlineColor();
+  const blind = useViewMode() === "blind";
   const shellColor = "#39404f";
 
   return (
@@ -59,8 +60,8 @@ export function BombCase({
         castShadow
         receiveShadow
       >
-        <meshStandardMaterial color={shellColor} roughness={0.65} />
-        {outlined && <Outlines thickness={OUTLINE_PX.chassis} color={colors.outline} />}
+        <ToyMaterial color={shellColor} roughness={0.65} />
+        <Outlines thickness={OUTLINE_PX.chassis} color={outline} />
       </RoundedBox>
 
       {/* Bandeja interna, verde de feltro */}
@@ -71,7 +72,8 @@ export function BombCase({
         position={[0, 0.005, 0]}
         receiveShadow
       >
-        <meshStandardMaterial color="#1f6b3a" roughness={0.95} />
+        <ToyMaterial color="#1f6b3a" roughness={0.95} />
+        {blind && <Outlines thickness={OUTLINE_PX.detail} color={outline} />}
       </RoundedBox>
 
       {/* Cantoneiras de borracha */}
@@ -89,8 +91,8 @@ export function BombCase({
           position={[x, -0.08, z]}
           castShadow
         >
-          <meshStandardMaterial color={colors.play.banana} roughness={0.5} />
-          {outlined && <Outlines thickness={OUTLINE_PX.part} color={colors.outline} />}
+          <ToyMaterial color={colors.play.banana} roughness={0.5} />
+          <Outlines thickness={OUTLINE_PX.part} color={outline} />
         </RoundedBox>
       ))}
 
@@ -104,8 +106,8 @@ export function BombCase({
           position={[x, -0.03, 0.42]}
           castShadow
         >
-          <meshStandardMaterial color={colors.play.banana} roughness={0.4} metalness={0.1} />
-          {outlined && <Outlines thickness={OUTLINE_PX.detail} color={colors.outline} />}
+          <ToyMaterial color={colors.play.banana} roughness={0.4} metalness={0.1} />
+          <Outlines thickness={OUTLINE_PX.detail} color={outline} />
         </RoundedBox>
       ))}
 
@@ -113,7 +115,7 @@ export function BombCase({
       {[-0.4, 0.4].map((x) => (
         <mesh key={x} position={[x, 0.01, -0.42]} rotation={[0, 0, Math.PI / 2]} castShadow>
           <cylinderGeometry args={[0.022, 0.022, 0.16, 12]} />
-          <meshStandardMaterial color="#8d9199" roughness={0.35} metalness={0.6} />
+          <ToyMaterial color="#8d9199" roughness={0.35} metalness={0.6} />
         </mesh>
       ))}
 
@@ -129,13 +131,13 @@ export function BombCase({
       </group>
 
       <group position={[0.29, 0.04, 0.185]}>
-        <BlankBay variant="vents" outlined={outlined} />
+        <BlankBay variant="vents" />
       </group>
       <group position={[-0.29, 0.04, -0.185]}>
-        <BlankBay variant="label" outlined={outlined} />
+        <BlankBay variant="label" />
       </group>
       <group position={[0.29, 0.04, -0.185]}>
-        <BlankBay variant="plate" outlined={outlined} />
+        <BlankBay variant="plate" />
       </group>
 
       {/* ---- Tampa ---- */}
@@ -147,14 +149,14 @@ export function BombCase({
           position={[0, 0.05, 0.42]}
           castShadow
         >
-          <meshStandardMaterial color={shellColor} roughness={0.65} />
-          {outlined && <Outlines thickness={OUTLINE_PX.chassis} color={colors.outline} />}
+          <ToyMaterial color={shellColor} roughness={0.65} />
+          <Outlines thickness={OUTLINE_PX.chassis} color={outline} />
         </RoundedBox>
 
         {/* Face interna da tampa: forro claro */}
         <mesh position={[0, -0.002, 0.42]} rotation={[Math.PI / 2, 0, 0]} receiveShadow>
           <planeGeometry args={[1.13, 0.73]} />
-          <meshStandardMaterial color={colors.panel} roughness={0.9} />
+          <ToyMaterial color={colors.panel} roughness={0.9} />
         </mesh>
 
         {/* Visor, virado para o jogador com a tampa aberta */}
@@ -167,55 +169,58 @@ export function BombCase({
 }
 
 /** Baia vazia — existe para o chassi parecer um objeto completo antes da F9. */
-function BlankBay({
-  variant,
-  outlined,
-}: {
-  variant: "vents" | "label" | "plate";
-  outlined: boolean;
-}) {
+function BlankBay({ variant }: { variant: "vents" | "label" | "plate" }) {
   const colors = useSceneColors();
+  const outline = useOutlineColor();
+  const blind = useViewMode() === "blind";
 
   return (
     <group>
       <RoundedBox args={[0.3, 0.03, 0.3]} radius={0.012} smoothness={3} receiveShadow castShadow>
-        <meshStandardMaterial color={colors.panel} roughness={0.75} />
-        {outlined && <Outlines thickness={OUTLINE_PX.detail} color={colors.outline} />}
+        <ToyMaterial color={colors.panel} roughness={0.75} />
+        <Outlines thickness={OUTLINE_PX.detail} color={outline} />
       </RoundedBox>
 
-      {variant === "vents" &&
+      {/* Detalhes chapados somem para o Cego: são marcas impressas na
+          superfície, sem relevo. Ele não teria como percebê-las — e
+          desenhá-las em contorno inventaria informação que ele não tem. */}
+      {!blind &&
+        variant === "vents" &&
         [-0.08, -0.027, 0.027, 0.08].map((z) => (
           <mesh key={z} position={[0, 0.017, z]} rotation={[-Math.PI / 2, 0, 0]}>
             <planeGeometry args={[0.22, 0.022]} />
-            <meshStandardMaterial color={colors.vanDeep} roughness={1} />
+            <ToyMaterial color={colors.vanDeep} roughness={1} />
           </mesh>
         ))}
 
-      {variant === "label" && (
+      {!blind && variant === "label" && (
         <mesh position={[0, 0.017, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <planeGeometry args={[0.2, 0.12]} />
-          <meshStandardMaterial color={colors.play.banana} roughness={0.8} />
+          <ToyMaterial color={colors.play.banana} roughness={0.8} />
         </mesh>
       )}
 
+      {/* O disco tem relevo, então o Cego o percebe — e ganha contorno. */}
       {variant === "plate" && (
         <mesh position={[0, 0.023, 0]}>
           <cylinderGeometry args={[0.05, 0.05, 0.016, 16]} />
-          <meshStandardMaterial color={colors.panelHi} roughness={0.5} metalness={0.2} />
+          <ToyMaterial color={colors.panelHi} roughness={0.5} metalness={0.2} />
+          {blind && <Outlines thickness={OUTLINE_PX.detail} color={outline} />}
         </mesh>
       )}
 
-      {[
-        [-0.12, 0.12],
-        [0.12, 0.12],
-        [-0.12, -0.12],
-        [0.12, -0.12],
-      ].map(([x, z]) => (
-        <mesh key={`${x},${z}`} position={[x, 0.017, z]} rotation={[-Math.PI / 2, 0, 0]}>
-          <circleGeometry args={[0.009, 8]} />
-          <meshStandardMaterial color={colors.vanDeep} roughness={0.5} />
-        </mesh>
-      ))}
+      {!blind &&
+        [
+          [-0.12, 0.12],
+          [0.12, 0.12],
+          [-0.12, -0.12],
+          [0.12, -0.12],
+        ].map(([x, z]) => (
+          <mesh key={`${x},${z}`} position={[x, 0.017, z]} rotation={[-Math.PI / 2, 0, 0]}>
+            <circleGeometry args={[0.009, 8]} />
+            <ToyMaterial color={colors.vanDeep} roughness={0.5} />
+          </mesh>
+        ))}
     </group>
   );
 }

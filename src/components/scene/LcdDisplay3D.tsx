@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { RoundedBox, Outlines } from "@react-three/drei";
 import { useSceneColors } from "@/lib/design/sceneColors";
 import { OUTLINE_PX } from "./outline";
+import { ToyMaterial, useOutlineColor, useViewMode } from "./viewMode";
 
 /**
  * Visor de 7 segmentos de verdade — cada traço é geometria, não textura
@@ -67,6 +68,8 @@ interface LcdDisplay3DProps {
 
 export function LcdDisplay3D({ ms, strikes, maxStrikes }: LcdDisplay3DProps) {
   const colors = useSceneColors();
+  const outline = useOutlineColor();
+  const blind = useViewMode() === "blind";
   const digits = formatClock(ms);
 
   // Segmento apagado: o verde do fundo puxado para o verde escuro. É o
@@ -116,12 +119,25 @@ export function LcdDisplay3D({ ms, strikes, maxStrikes }: LcdDisplay3DProps) {
     return out;
   }, [digits]);
 
+  // O Cego percebe a carcaça (tem relevo, dá para tatear) mas não a
+  // tela nem os dígitos. Nada de "mostrar o timer apagado": o tempo
+  // restante simplesmente não é informação que ele possui — quem tem
+  // que dizer é o Surdo, e é isso que força a conversa.
+  if (blind) {
+    return (
+      <RoundedBox args={[0.58, 0.3, 0.05]} radius={0.022} smoothness={3}>
+        <ToyMaterial color={colors.panel} roughness={0.7} />
+        <Outlines thickness={OUTLINE_PX.detail} color={outline} />
+      </RoundedBox>
+    );
+  }
+
   return (
     <group>
       {/* Carcaça do visor */}
       <RoundedBox args={[0.58, 0.3, 0.05]} radius={0.022} smoothness={3} castShadow>
-        <meshStandardMaterial color={colors.panel} roughness={0.7} />
-        <Outlines thickness={OUTLINE_PX.detail} color={colors.outline} />
+        <ToyMaterial color={colors.panel} roughness={0.7} />
+        <Outlines thickness={OUTLINE_PX.detail} color={outline} />
       </RoundedBox>
 
       {/* Tela.

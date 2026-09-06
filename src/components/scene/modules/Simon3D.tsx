@@ -6,6 +6,7 @@ import { useFrame } from "@react-three/fiber";
 import { RoundedBox, Outlines } from "@react-three/drei";
 import { useSceneColors } from "@/lib/design/sceneColors";
 import { OUTLINE_PX } from "../outline";
+import { ToyMaterial, useOutlineColor, useViewMode } from "../viewMode";
 import { PLAY_COLOR_SPECS, type PlayColor } from "@/lib/design/palette";
 
 /**
@@ -53,6 +54,8 @@ interface SimonButtonProps {
 
 function SimonButton({ color, position, disabled, onPress }: SimonButtonProps) {
   const colors = useSceneColors();
+  const outline = useOutlineColor();
+  const blind = useViewMode() === "blind";
   const capRef = useRef<THREE.Mesh>(null);
   const pressRef = useRef(0);
   const [hovered, setHovered] = useState(false);
@@ -87,8 +90,8 @@ function SimonButton({ color, position, disabled, onPress }: SimonButtonProps) {
       {/* Soquete: o furo no painel onde a peça encaixa */}
       <mesh position={[0, 0.012, 0]} receiveShadow>
         <cylinderGeometry args={[0.062, 0.062, 0.024, 20]} />
-        <meshStandardMaterial color={colors.vanDeep} roughness={0.9} />
-        <Outlines thickness={OUTLINE_PX.detail} color={colors.outline} />
+        <ToyMaterial color={colors.vanDeep} roughness={0.9} />
+        <Outlines thickness={OUTLINE_PX.detail} color={outline} />
       </mesh>
 
       {/* A peça: a forma É o glifo */}
@@ -111,14 +114,27 @@ function SimonButton({ color, position, disabled, onPress }: SimonButtonProps) {
         }}
       >
         <ButtonShape color={color} />
-        <meshStandardMaterial
-          color={tint}
-          roughness={0.32}
-          metalness={0}
-          emissive={tint}
-          emissiveIntensity={hovered && !disabled ? 0.35 : 0.08}
-        />
-        <Outlines thickness={OUTLINE_PX.detail} color={colors.outline} />
+
+        {/* O destaque é o ÚNICO retorno visual que o Cego tem: diz
+            "sua mão está nesta peça", e nada mais. Não é cor
+            codificando informação — é posição. Sem ele, tatear no
+            escuro seria adivinhação pura. */}
+        {blind ? (
+          <meshBasicMaterial
+            color={hovered && !disabled ? colors.cream : "#04060e"}
+            toneMapped={false}
+          />
+        ) : (
+          <meshStandardMaterial
+            color={tint}
+            roughness={0.32}
+            metalness={0}
+            emissive={tint}
+            emissiveIntensity={hovered && !disabled ? 0.35 : 0.08}
+          />
+        )}
+
+        <Outlines thickness={OUTLINE_PX.detail} color={outline} />
       </mesh>
     </group>
   );
@@ -150,49 +166,57 @@ interface Simon3DProps {
 
 export function Simon3D({ progress, sequenceLength, solved, disabled, onPress }: Simon3DProps) {
   const colors = useSceneColors();
+  const outline = useOutlineColor();
+  const blind = useViewMode() === "blind";
 
   return (
     <group>
       {/* Placa do módulo, aparafusada na bandeja */}
       <RoundedBox args={[0.3, 0.03, 0.3]} radius={0.012} smoothness={3} receiveShadow castShadow>
-        <meshStandardMaterial color={colors.panelHi} roughness={0.6} />
-        <Outlines thickness={OUTLINE_PX.detail} color={colors.outline} />
+        <ToyMaterial color={colors.panelHi} roughness={0.6} />
+        <Outlines thickness={OUTLINE_PX.detail} color={outline} />
       </RoundedBox>
 
       {/* Parafusos nos cantos — a mesma linguagem do <Panel> da F1 */}
-      {[
-        [-0.12, 0.12],
-        [0.12, 0.12],
-        [-0.12, -0.12],
-        [0.12, -0.12],
-      ].map(([x, z]) => (
-        <mesh key={`${x},${z}`} position={[x, 0.016, z]} rotation={[-Math.PI / 2, 0, 0]}>
-          <circleGeometry args={[0.009, 8]} />
-          <meshStandardMaterial color={colors.vanDeep} roughness={0.5} />
-        </mesh>
-      ))}
+      {!blind &&
+        [
+          [-0.12, 0.12],
+          [0.12, 0.12],
+          [-0.12, -0.12],
+          [0.12, -0.12],
+        ].map(([x, z]) => (
+          <mesh key={`${x},${z}`} position={[x, 0.016, z]} rotation={[-Math.PI / 2, 0, 0]}>
+            <circleGeometry args={[0.009, 8]} />
+            <ToyMaterial color={colors.vanDeep} roughness={0.5} />
+          </mesh>
+        ))}
 
-      {/* Progresso da sequência */}
-      <group position={[0, 0.017, -0.118]}>
-        {Array.from({ length: sequenceLength }, (_, i) => {
-          const lit = i < progress;
-          return (
-            <mesh
-              key={i}
-              position={[(i - (sequenceLength - 1) / 2) * 0.036, 0, 0]}
-              rotation={[-Math.PI / 2, 0, 0]}
-            >
-              <circleGeometry args={[0.011, 12]} />
-              <meshStandardMaterial
-                color={lit ? colors.lcd : colors.vanDeep}
-                emissive={lit ? colors.lcd : "#000000"}
-                emissiveIntensity={lit ? 1.4 : 0}
-                toneMapped={false}
-              />
-            </mesh>
-          );
-        })}
-      </group>
+      {/* Progresso da sequência.
+          Fica de fora da visão do Cego: são LEDs, não relevo. Ele
+          aperta sem saber se acertou — quem vê tem que avisar. É
+          desconfortável de propósito; é o jogo. */}
+      {!blind && (
+        <group position={[0, 0.017, -0.118]}>
+          {Array.from({ length: sequenceLength }, (_, i) => {
+            const lit = i < progress;
+            return (
+              <mesh
+                key={i}
+                position={[(i - (sequenceLength - 1) / 2) * 0.036, 0, 0]}
+                rotation={[-Math.PI / 2, 0, 0]}
+              >
+                <circleGeometry args={[0.011, 12]} />
+                <meshStandardMaterial
+                  color={lit ? colors.lcd : colors.vanDeep}
+                  emissive={lit ? colors.lcd : "#000000"}
+                  emissiveIntensity={lit ? 1.4 : 0}
+                  toneMapped={false}
+                />
+              </mesh>
+            );
+          })}
+        </group>
+      )}
 
       {BUTTON_ORDER.map((color, index) => (
         <SimonButton

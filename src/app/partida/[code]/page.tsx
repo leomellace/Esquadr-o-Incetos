@@ -11,7 +11,8 @@ import type { BombAction, BombConfig, BombState } from "@/lib/game/bomb";
 import { logMatchEvent, finalizeMatch } from "@/lib/game/matchEvents";
 import { syncServerClock, serverNow } from "@/lib/game/serverClock";
 import { Panel } from "@/components/ui/Panel";
-import type { Database } from "@/types/database";
+import { ManualBook } from "@/components/ManualBook";
+import type { Database, Role } from "@/types/database";
 
 // three.js não pode ser renderizado no servidor, e são ~600kB que não
 // têm por que entrar no bundle de nenhuma outra rota.
@@ -28,6 +29,30 @@ const BombScene = dynamic(
 );
 
 type RoomRow = Database["incetos"]["Tables"]["rooms"]["Row"];
+
+/**
+ * O que cada papel precisa saber logo de cara. Não é decoração: sem
+ * isso, o jogador do papel Cego acha que a tela quebrou, e o Surdo
+ * fica clicando numa bomba que não responde.
+ */
+const ROLE_HUD: Record<Role | "espectador", { title: string; hint: string }> = {
+  cego: {
+    title: "🙈 Você é o Cego",
+    hint: "Só você pode tocar a bomba. Não vê cor, número nem texto — pergunte o que apertar.",
+  },
+  surdo: {
+    title: "🙉 Você é o Surdo",
+    hint: "Só você vê a bomba inteira. Não pode tocá-la: descreva as peças pela forma.",
+  },
+  mudo: {
+    title: "🙊 Você é o Mudo",
+    hint: "Só você lê o manual. Não pode falar nem tocar — o manual traz a regra, não a resposta.",
+  },
+  espectador: {
+    title: "Assistindo",
+    hint: "Você não está entre os três desta sala.",
+  },
+};
 
 // Sem UI de configuração ainda (isso é F10 — modo personalizado e
 // campanha de verdade). Todo mundo joga a mesma bomba fixa por ora,
@@ -49,6 +74,7 @@ export default function PartidaPage() {
   const [room, setRoom] = useState<RoomRow | null>(null);
   const [matchId, setMatchId] = useState<string | null>(null);
   const [startedAtMs, setStartedAtMs] = useState<number | null>(null);
+  const [role, setRole] = useState<Role | "espectador" | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -79,6 +105,20 @@ export default function PartidaPage() {
       }
       setRoom(roomRow);
 
+      // O papel precisa ser conhecido ANTES do <Canvas> montar: ele
+      // decide sombras e postprocessing, e trocar isso depois deixa o
+      // renderer sem desenhar (mesma armadilha do tier de qualidade
+      // na F5). Quem não é membro assiste como espectador.
+      const { data: membership } = await supabase
+        .from("room_members")
+        .select("role")
+        .eq("room_id", roomRow.id)
+        .eq("profile_id", profile.id)
+        .maybeSingle();
+
+      if (cancelled) return;
+      setRole(membership?.role ?? "espectador");
+
       const { data: match } = await supabase
         .from("matches")
         .select("id, started_at")
@@ -100,7 +140,7 @@ export default function PartidaPage() {
     return () => {
       cancelled = true;
     };
-  }, [code, router]);
+  }, [code, router, profile.id]);
 
   if (loadError) {
     return (
@@ -112,7 +152,7 @@ export default function PartidaPage() {
     );
   }
 
-  if (!room || !matchId || startedAtMs === null) {
+  if (!room || !matchId || startedAtMs === null || role === null) {
     return (
       <div className="grid flex-1 place-items-center p-8">
         <p className="animate-pulse font-mono text-sm text-cream-dim">carregando partida...</p>
@@ -126,6 +166,7 @@ export default function PartidaPage() {
       matchId={matchId}
       startedAtMs={startedAtMs}
       selfProfileId={profile.id}
+      role={role}
     />
   );
 }
@@ -141,11 +182,13 @@ function PartidaGame({
   matchId,
   startedAtMs,
   selfProfileId,
+  role,
 }: {
   room: RoomRow;
   matchId: string;
   startedAtMs: number;
   selfProfileId: string;
+  role: Role | "espectador";
 }) {
   const [now, setNow] = useState(0);
   const seqRef = useRef(0);
@@ -194,6 +237,13 @@ function PartidaGame({
   const simonState = simon.state as { sequenceLength: number; progress: number };
   const armed = bomb.status === "armed";
 
+  // A regra central do jogo inteiro: SÓ o Cego toca a bomba. Os outros
+  // dois enxergam (ou leem) e precisam falar. Se qualquer um pudesse
+  // apertar, o jogo deixaria de existir — não haveria nada que forçasse
+  // a conversa.
+  const canTouch = armed && role === "cego";
+  const blind = role === "cego";
+
   return (
     <main className="relative flex-1 overflow-hidden">
       {/* O canvas precisa de altura definida, não herdada de flex: o
@@ -201,6 +251,7 @@ function PartidaGame({
           resolve altura percentual como zero. */}
       <div className="absolute inset-0">
         <BombScene
+          role={role}
           timeLeftMs={timeLeft}
           strikes={bomb.strikes}
           maxStrikes={bomb.config.maxStrikes}
@@ -209,7 +260,7 @@ function PartidaGame({
             sequenceLength: simonState.sequenceLength,
             solved: simon.solved,
           }}
-          interactive={armed}
+          interactive={canTouch}
           onSimonPress={(buttonIndex) =>
             engine.sendAction({ moduleId: "simon", payload: { buttonIndex } })
           }
@@ -226,7 +277,10 @@ function PartidaGame({
               Sala {room.code}
             </p>
             <p className="font-display text-lg font-semibold text-cream drop-shadow-[0_2px_0_var(--outline)]">
-              {simon.solved ? "Módulo desarmado" : `Simon ${simonState.progress}/${simonState.sequenceLength}`}
+              {ROLE_HUD[role].title}
+            </p>
+            <p className="mt-0.5 max-w-[20rem] text-xs text-cream-dim">
+              {ROLE_HUD[role].hint}
             </p>
           </div>
 
@@ -235,9 +289,20 @@ function PartidaGame({
           </p>
         </header>
 
-        <footer className="font-mono text-[10px] text-cream-dim/70">
-          F5 · cena 3D — a separação por papel (o que cada um enxerga) chega na F6
-        </footer>
+        {/* O manual é do Mudo, e só dele. */}
+        {role === "mudo" && (
+          <div className="flex justify-center pb-2">
+            <ManualBook pages={simon.manual} />
+          </div>
+        )}
+
+        {role !== "mudo" && (
+          <footer className="font-mono text-[10px] text-cream-dim/70">
+            {blind
+              ? "sem cor, sem número, sem manual — pergunte"
+              : "você não pode tocar na bomba; descreva o que vê"}
+          </footer>
+        )}
       </div>
 
       {!armed && (
