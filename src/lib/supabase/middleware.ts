@@ -23,23 +23,37 @@ export async function updateSession(request: NextRequest) {
     return response;
   }
 
-  const supabase = createServerClient<Database, "incetos">(url, anonKey, {
-    db: { schema: "incetos" },
-    cookies: {
-      getAll: () => request.cookies.getAll(),
-      setAll: (cookiesToSet) => {
-        for (const { name, value } of cookiesToSet) {
-          request.cookies.set(name, value);
-        }
-        response = NextResponse.next({ request });
-        for (const { name, value, options } of cookiesToSet) {
-          response.cookies.set(name, value, options);
-        }
+  // Cinturão além do suspensório: a checagem acima só pega AUSÊNCIA.
+  // Um valor PRESENTE mas errado (URL com typo, chave trocada) não é
+  // pego por `!url`, e ainda assim pode lançar — seja na hora de montar
+  // o client (URL inválida) ou na chamada de rede do `getUser()`
+  // (domínio errado, chave rejeitada). Nenhum dos dois pode derrubar o
+  // site: esta função só RENOVA sessão, ela nunca é o motivo de uma
+  // página não carregar.
+  try {
+    const supabase = createServerClient<Database, "incetos">(url, anonKey, {
+      db: { schema: "incetos" },
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        setAll: (cookiesToSet) => {
+          for (const { name, value } of cookiesToSet) {
+            request.cookies.set(name, value);
+          }
+          response = NextResponse.next({ request });
+          for (const { name, value, options } of cookiesToSet) {
+            response.cookies.set(name, value, options);
+          }
+        },
       },
-    },
-  });
+    });
 
-  await supabase.auth.getUser();
+    await supabase.auth.getUser();
+  } catch (err) {
+    console.error(
+      "[middleware] falha ao renovar sessão — seguindo sem sessão nesta requisição:",
+      err instanceof Error ? err.message : err,
+    );
+  }
 
   return response;
 }
